@@ -1,0 +1,344 @@
+// Wealth Research Desk - data model
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  ANALYST
+  ADMIN
+}
+
+enum SubscriptionPlanType {
+  TRIAL
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum TradeType {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  ACTIVE
+  CLOSED
+  TARGET1_HIT
+  TARGET2_HIT
+  TARGET3_HIT
+  STOP_LOSS_HIT
+}
+
+enum NotificationChannel {
+  DASHBOARD
+  TELEGRAM
+  EMAIL
+}
+
+enum PaymentStatus {
+  CREATED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model User {
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique
+  phone           String    @unique
+  panNumber       String?   @unique
+  aadhaarNumber   String?   @unique
+  passwordHash    String
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+  role            Role      @default(USER)
+  isBanned        Boolean   @default(false)
+  bannedReason    String?
+  trialConsumed   Boolean   @default(false)
+  legalAcceptedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  subscriptions  Subscription[]
+  payments       Payment[]
+  notifications  Notification[]
+  supportTickets SupportTicket[]
+  trialUsage     TrialUsage?
+  resetTokens    PasswordResetToken[]
+
+  @@index([role, isBanned])
+  @@index([createdAt])
+}
+
+model Subscription {
+  id              String               @id @default(cuid())
+  userId          String
+  planType        SubscriptionPlanType
+  planCode        String
+  planName        String
+  status          SubscriptionStatus   @default(PENDING)
+  amountPaise     Int
+  currency        String               @default("INR")
+  startDate       DateTime
+  endDate         DateTime
+  autoRenew       Boolean              @default(false)
+  razorpayOrderId String?              @unique
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([endDate])
+}
+
+model PlanConfig {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  amountPaise Int
+  durationDays Int
+  isTrial     Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  features    String[]
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model Analyst {
+  id               String   @id @default(cuid())
+  name             String
+  email            String   @unique
+  experienceYears  Int
+  specialization   String
+  sebiRegistration String
+  bio              String
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  trades   Trade[]
+  outlooks MarketOutlook[]
+
+  @@index([isActive])
+}
+
+model Trade {
+  id             String      @id @default(cuid())
+  analystId      String
+  instrument     String
+  segment        String
+  tradeType      TradeType
+  entryPrice     Decimal     @db.Decimal(12, 2)
+  stopLoss       Decimal     @db.Decimal(12, 2)
+  target1        Decimal     @db.Decimal(12, 2)
+  target2        Decimal     @db.Decimal(12, 2)
+  target3        Decimal?    @db.Decimal(12, 2)
+  riskRating     Int
+  status         TradeStatus @default(ACTIVE)
+  rationale      String
+  chartImageUrl  String?
+  isTrialVisible Boolean     @default(false)
+  postedAt       DateTime    @default(now())
+  closedAt       DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  analyst Analyst       @relation(fields: [analystId], references: [id], onDelete: Restrict)
+  updates TradeUpdate[]
+
+  @@index([status, postedAt])
+  @@index([instrument])
+}
+
+model TradeUpdate {
+  id        String       @id @default(cuid())
+  tradeId   String
+  message   String
+  status    TradeStatus?
+  createdAt DateTime     @default(now())
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@index([tradeId, createdAt])
+}
+
+model MarketOutlook {
+  id                     String   @id @default(cuid())
+  analystId              String
+  date                   DateTime
+  nifty                  String
+  bankNifty              String
+  volatility             String
+  globalCues             String
+  sectorStrength         String
+  institutionalSentiment String
+  createdAt              DateTime @default(now())
+
+  analyst Analyst @relation(fields: [analystId], references: [id], onDelete: Restrict)
+
+  @@unique([date, analystId])
+  @@index([date])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  userId            String
+  amountPaise       Int
+  gstAmountPaise    Int?
+  currency          String        @default("INR")
+  status            PaymentStatus @default(CREATED)
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?       @unique
+  razorpaySignature String?
+  invoiceNumber     String?       @unique
+  planCode          String?
+  planName          String?
+  planType          SubscriptionPlanType?
+  durationDays      Int?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  channel   NotificationChannel
+  eventType String
+  audience  String              @default("all")
+  batchId   String?
+  isRead    Boolean             @default(false)
+  readAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([batchId])
+}
+
+model PhoneOtp {
+  id                String    @id @default(cuid())
+  phone             String    @unique
+  otpHash           String
+  expiresAt         DateTime
+  resendAvailableAt DateTime
+  attempts          Int       @default(0)
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model TrialUsage {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  startedAt         DateTime
+  expiresAt         DateTime
+  ipHash            String
+  deviceFingerprint String
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([ipHash])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  actorName String
+  action    String
+  entity    String
+  entityId  String
+  summary   String
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model SupportTicket {
+  id        String       @id @default(cuid())
+  userId    String
+  subject   String
+  message   String
+  status    TicketStatus @default(OPEN)
+  priority  String       @default("MEDIUM")
+  response  String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+model ManagedContent {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  body      String   @db.Text
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+model RateLimit {
+  id        String   @id
+  hits      Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

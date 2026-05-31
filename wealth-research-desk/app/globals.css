@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme tokens. All colours are semantic so components never reference
+ * raw "text-white" - light/dark switch by swapping these variables only.
+ */
+:root,
+.dark {
+  --background: 7 16 25;
+  --surface: 13 23 34;
+  --card: 18 29 42;
+  --border: 38 52 68;
+  --foreground: 237 241 245;
+  --muted: 148 161 176;
+  --accent: 201 174 122;
+  --positive: 52 199 145;
+  --negative: 244 113 116;
+  --warning: 232 178 86;
+  color-scheme: dark;
+}
+
+.light {
+  --background: 245 247 250;
+  --surface: 255 255 255;
+  --card: 255 255 255;
+  --border: 223 228 234;
+  --foreground: 24 35 49;
+  --muted: 90 104 122;
+  --accent: 146 113 58;
+  --positive: 18 138 99;
+  --negative: 198 58 62;
+  --warning: 173 122 30;
+  color-scheme: light;
+}
+
+* {
+  border-color: rgb(var(--border));
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.container-page {
+  @apply mx-auto w-full max-w-content px-4 sm:px-6;
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, rgb(var(--foreground)), rgb(var(--accent)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.surface-grid {
+  background-image: radial-gradient(rgb(var(--border) / 0.5) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 9999px;
+}
+
+table {
+  border-collapse: collapse;
+}

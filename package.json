@@ -1,0 +1,16 @@
+{
+  "name": "wealth-research-desk-v2-root",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --dir wealth-research-desk dev",
+    "build": "pnpm --dir wealth-research-desk build",
+    "start": "pnpm --dir wealth-research-desk start",
+    "lint": "pnpm --dir wealth-research-desk lint",
+    "typecheck": "pnpm --dir wealth-research-desk typecheck",
+    "prisma:generate": "pnpm --dir wealth-research-desk prisma:generate",
+    "prisma:push": "pnpm --dir wealth-research-desk prisma:push",
+    "prisma:migrate": "pnpm --dir wealth-research-desk prisma:migrate",
+    "prisma:seed": "pnpm --dir wealth-research-desk prisma:seed",
+    "install:app": "pnpm --dir wealth-research-desk install"
+  }
+}
