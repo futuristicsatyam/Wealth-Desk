@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ComplianceBanner } from "@/components/compliance-banner";
@@ -23,11 +24,15 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true }
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Per-request CSP nonce issued by middleware. Passed to next-themes so its
+  // pre-hydration inline script carries the nonce under the strict CSP.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <ThemeProvider>
+        <ThemeProvider nonce={nonce}>
           <ComplianceBanner />
           {children}
         </ThemeProvider>

@@ -1,5 +1,7 @@
+import crypto from "crypto";
 import type { Prisma, SubscriptionPlanType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { referralBonusDaysForPlan, referralBonusLabel } from "@/lib/referral";
 
 export type Entitlement = {
   active: boolean;
@@ -45,7 +47,9 @@ export function generateInvoiceNumber(date = new Date()): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
-  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  // Cryptographically random suffix - the invoiceNumber column is unique, so a
+  // weak (collision-prone) suffix could fail a legitimate payment grant.
+  const suffix = crypto.randomBytes(6).toString("hex").toUpperCase();
   return `INV-${y}${m}${d}-${suffix}`;
 }
 
@@ -119,6 +123,80 @@ export async function grantSubscriptionFromPayment(params: {
         razorpayOrderId: payment.razorpayOrderId
       }
     });
+
+    const referredUser = await tx.user.findUnique({
+      where: { id: payment.userId },
+      select: { id: true, name: true, referredByUserId: true }
+    });
+
+    if (referredUser?.referredByUserId && planType !== "TRIAL") {
+      const bonusDays = referralBonusDaysForPlan(planType);
+
+      if (bonusDays > 0) {
+        const existingReward = await tx.referralReward.findUnique({
+          where: { referredUserId: referredUser.id },
+          select: { id: true }
+        });
+
+        if (!existingReward) {
+          const referrerActiveSubscription = await tx.subscription.findFirst({
+            where: {
+              userId: referredUser.referredByUserId,
+              status: "ACTIVE",
+              endDate: { gte: now }
+            },
+            orderBy: { endDate: "desc" }
+          });
+
+          if (referrerActiveSubscription) {
+            await tx.subscription.update({
+              where: { id: referrerActiveSubscription.id },
+              data: {
+                endDate: new Date(
+                  referrerActiveSubscription.endDate.getTime() + bonusDays * 24 * 60 * 60 * 1000
+                )
+              }
+            });
+          } else {
+            const bonusEnd = new Date(now.getTime() + bonusDays * 24 * 60 * 60 * 1000);
+            await tx.subscription.create({
+              data: {
+                userId: referredUser.referredByUserId,
+                planType: planTypeFromDuration(bonusDays, false),
+                planCode: "REFERRAL_BONUS",
+                planName: `Referral Bonus (${bonusDays} Days)`,
+                status: "ACTIVE",
+                amountPaise: 0,
+                startDate: now,
+                endDate: bonusEnd,
+                autoRenew: false
+              }
+            });
+          }
+
+          await tx.referralReward.create({
+            data: {
+              referrerUserId: referredUser.referredByUserId,
+              referredUserId: referredUser.id,
+              referredPaymentId: payment.id,
+              referredPlanType: planType,
+              bonusDays
+            }
+          });
+
+          await tx.notification.create({
+            data: {
+              userId: referredUser.referredByUserId,
+              title: "Referral reward unlocked",
+              body: `${referredUser.name} subscribed to ${payment.planName ?? planType}. You received ${referralBonusLabel(bonusDays)} free access.`,
+              channel: "DASHBOARD",
+              eventType: "REFERRAL_REWARD",
+              audience: "self"
+            }
+          });
+        }
+      }
+    }
 
     return { granted: true };
   });

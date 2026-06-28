@@ -1,21 +1,26 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { Role, User } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 /**
- * Resolves the current user FROM THE DATABASE on every call.
+ * Resolves the current user FROM THE DATABASE.
  * This guarantees a banned user (or one whose role changed) is rejected
  * immediately, instead of trusting a long-lived JWT.
+ *
+ * Wrapped in React `cache()` so multiple callers within the SAME request
+ * (e.g. a route-group layout AND its page both calling requireUser) share a
+ * single DB lookup instead of issuing a duplicate query per render.
  */
-export async function getCurrentUser(): Promise<User | null> {
+export const getCurrentUser = cache(async (): Promise<User | null> => {
   const session = await auth().catch(() => null);
   if (!session?.user?.id) return null;
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
   if (!user || user.isBanned) return null;
   return user;
-}
+});
 
 /** For pages/layouts: redirects when not authenticated. */
 export async function requireUser(): Promise<User> {

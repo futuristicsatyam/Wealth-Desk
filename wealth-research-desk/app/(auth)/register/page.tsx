@@ -5,8 +5,15 @@ import { getCurrentUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Create account" };
 
-export default async function RegisterPage() {
+export default async function RegisterPage({
+  searchParams
+}: {
+  searchParams: Promise<{ ref?: string }>;
+}) {
   const user = await getCurrentUser();
   if (user) redirect("/dashboard");
-  return <RegisterForm />;
+  const params = await searchParams;
+  const initialReferralCode = (params.ref ?? "").trim().toUpperCase();
+
+  return <RegisterForm initialReferralCode={initialReferralCode} />;
 }

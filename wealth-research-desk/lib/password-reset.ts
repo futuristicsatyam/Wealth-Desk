@@ -20,20 +20,30 @@ export async function createPasswordResetToken(userId: string): Promise<string> 
   return rawToken;
 }
 
-/** Consumes a reset token and updates the password. Returns true on success. */
-export async function consumePasswordReset(rawToken: string, newPassword: string): Promise<boolean> {
+/**
+ * Consumes a reset token and updates the password. Returns the affected user on
+ * success (so the caller can audit-log it), or null when the token is invalid.
+ */
+export async function consumePasswordReset(
+  rawToken: string,
+  newPassword: string
+): Promise<{ userId: string; userName: string } | null> {
   const tokenHash = hashResetToken(rawToken);
   const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
 
   if (!record || record.usedAt || record.expiresAt.getTime() < Date.now()) {
-    return false;
+    return null;
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 12);
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+  const [user] = await prisma.$transaction([
+    prisma.user.update({
+      where: { id: record.userId },
+      data: { passwordHash },
+      select: { id: true, name: true }
+    }),
     prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
     prisma.passwordResetToken.deleteMany({ where: { userId: record.userId, usedAt: null } })
   ]);
-  return true;
+  return { userId: user.id, userName: user.name };
 }

@@ -68,8 +68,12 @@ model User {
   name            String
   email           String    @unique
   phone           String    @unique
-  panNumber       String?   @unique
-  aadhaarNumber   String?   @unique
+  // PAN / Aadhaar are stored encrypted at rest (see lib/pii.ts). Uniqueness is
+  // enforced via the deterministic blind-index columns below, not the ciphertext.
+  panNumber       String?
+  aadhaarNumber   String?
+  panHash         String?   @unique
+  aadhaarHash     String?   @unique
   passwordHash    String
   emailVerifiedAt DateTime?
   phoneVerifiedAt DateTime?
@@ -78,6 +82,8 @@ model User {
   bannedReason    String?
   trialConsumed   Boolean   @default(false)
   legalAcceptedAt DateTime?
+  referralCode     String?  @unique
+  referredByUserId String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -88,8 +94,29 @@ model User {
   trialUsage     TrialUsage?
   resetTokens    PasswordResetToken[]
 
+  referredBy     User?            @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  referrals      User[]           @relation("UserReferrals")
+  rewardsGiven   ReferralReward[] @relation("ReferrerRewards")
+  rewardReceived ReferralReward?  @relation("ReferredReward")
+
   @@index([role, isBanned])
   @@index([createdAt])
+  @@index([referredByUserId])
+}
+
+model ReferralReward {
+  id                String               @id @default(cuid())
+  referrerUserId    String
+  referredUserId    String               @unique
+  referredPaymentId String
+  referredPlanType  SubscriptionPlanType
+  bonusDays         Int
+  createdAt         DateTime             @default(now())
+
+  referrer User @relation("ReferrerRewards", fields: [referrerUserId], references: [id], onDelete: Cascade)
+  referred User @relation("ReferredReward", fields: [referredUserId], references: [id], onDelete: Cascade)
+
+  @@index([referrerUserId])
 }
 
 model Subscription {
@@ -149,9 +176,20 @@ model Analyst {
   @@index([isActive])
 }
 
+model TradeIndex {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  lotSize   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trades Trade[]
+}
+
 model Trade {
   id             String      @id @default(cuid())
   analystId      String
+  indexId        String?
   instrument     String
   segment        String
   tradeType      TradeType
@@ -171,10 +209,12 @@ model Trade {
   updatedAt      DateTime    @updatedAt
 
   analyst Analyst       @relation(fields: [analystId], references: [id], onDelete: Restrict)
+  index   TradeIndex?   @relation(fields: [indexId], references: [id], onDelete: SetNull)
   updates TradeUpdate[]
 
   @@index([status, postedAt])
   @@index([instrument])
+  @@index([indexId])
 }
 
 model TradeUpdate {

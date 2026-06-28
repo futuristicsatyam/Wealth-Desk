@@ -9,31 +9,32 @@ export async function consumeRateLimit(
   limit: number,
   windowMs: number
 ): Promise<{ allowed: boolean; remaining: number; retryAfterSec: number }> {
-  const now = Date.now();
-  const expiresAt = new Date(now + windowMs);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + windowMs);
 
-  const existing = await prisma.rateLimit.findUnique({ where: { id: key } });
+  // Atomically start a fresh window if the previous one has expired. This is a
+  // no-op for an active window, and is safe under concurrency (a second racing
+  // reset just re-applies the same values).
+  await prisma.rateLimit.updateMany({
+    where: { id: key, expiresAt: { lte: now } },
+    data: { hits: 0, expiresAt }
+  });
 
-  if (!existing || existing.expiresAt.getTime() <= now) {
-    await prisma.rateLimit.upsert({
-      where: { id: key },
-      create: { id: key, hits: 1, expiresAt },
-      update: { hits: 1, expiresAt }
-    });
-    return { allowed: true, remaining: limit - 1, retryAfterSec: 0 };
-  }
+  // Atomic create-or-increment. The DB-level increment means concurrent
+  // requests cannot lose counts, so the limit can never be silently exceeded.
+  const record = await prisma.rateLimit.upsert({
+    where: { id: key },
+    create: { id: key, hits: 1, expiresAt },
+    update: { hits: { increment: 1 } }
+  });
 
-  if (existing.hits >= limit) {
+  if (record.hits > limit) {
     return {
       allowed: false,
       remaining: 0,
-      retryAfterSec: Math.ceil((existing.expiresAt.getTime() - now) / 1000)
+      retryAfterSec: Math.max(1, Math.ceil((record.expiresAt.getTime() - now.getTime()) / 1000))
     };
   }
 
-  await prisma.rateLimit.update({
-    where: { id: key },
-    data: { hits: { increment: 1 } }
-  });
-  return { allowed: true, remaining: limit - existing.hits - 1, retryAfterSec: 0 };
+  return { allowed: true, remaining: limit - record.hits, retryAfterSec: 0 };
 }

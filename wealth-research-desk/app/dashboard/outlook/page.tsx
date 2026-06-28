@@ -30,6 +30,12 @@ export default async function OutlookPage() {
     );
   }
 
+  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
+  await prisma.marketOutlook.deleteMany({
+    where: { createdAt: { lt: cutoff } }
+  });
+
   const outlooks = await prisma.marketOutlook.findMany({
     orderBy: { date: "desc" },
     take: 14,

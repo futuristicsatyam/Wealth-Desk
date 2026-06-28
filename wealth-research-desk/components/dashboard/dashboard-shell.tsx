@@ -19,6 +19,7 @@ import {
   LogOut
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LiveNotifications } from "@/components/dashboard/live-notifications";
 import { cn } from "@/lib/utils";
 
 const ICONS = {
@@ -102,6 +103,7 @@ export function DashboardShell({
 
   return (
     <div className="flex min-h-screen">
+      <LiveNotifications />
       <aside className="hidden w-64 shrink-0 border-r border-border bg-surface lg:block">
         {SidebarContent}
       </aside>

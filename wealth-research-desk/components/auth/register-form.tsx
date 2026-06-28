@@ -11,7 +11,7 @@ import { registerAction, type ActionState } from "@/app/(auth)/actions";
 
 const initialState: ActionState = { status: "idle", message: "" };
 
-export function RegisterForm() {
+export function RegisterForm({ initialReferralCode = "" }: { initialReferralCode?: string }) {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [otpPending, startOtp] = useTransition();
@@ -24,6 +24,7 @@ export function RegisterForm() {
     name: "",
     email: "",
     phone: "",
+    referralCode: initialReferralCode,
     panNumber: "",
     aadhaarNumber: "",
     password: "",
@@ -109,6 +110,15 @@ export function RegisterForm() {
               required
             />
           </div>
+          <div>
+            <Label htmlFor="referralCode">Referral code (optional)</Label>
+            <Input
+              id="referralCode"
+              value={details.referralCode}
+              onChange={(e) => update("referralCode", e.target.value.toUpperCase())}
+              placeholder="Enter referral code"
+            />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="pan">PAN</Label>
@@ -174,6 +184,7 @@ export function RegisterForm() {
           <input type="hidden" name="name" value={details.name} />
           <input type="hidden" name="email" value={details.email} />
           <input type="hidden" name="phone" value={details.phone} />
+          <input type="hidden" name="referralCode" value={details.referralCode} />
           <input type="hidden" name="panNumber" value={details.panNumber} />
           <input type="hidden" name="aadhaarNumber" value={details.aadhaarNumber} />
           <input type="hidden" name="password" value={details.password} />

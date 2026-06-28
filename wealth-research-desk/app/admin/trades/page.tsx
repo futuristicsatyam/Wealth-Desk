@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { IndexForm } from "@/components/admin/index-form";
 import { TradeForm } from "@/components/admin/trade-form";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime, tradeStatusLabel } from "@/lib/format";
@@ -21,12 +22,16 @@ const STATUS_OPTIONS = [
 ] as const;
 
 export default async function AdminTradesPage() {
-  const [analysts, trades] = await Promise.all([
+  const [analysts, indexes, trades] = await Promise.all([
     prisma.analyst.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
+    prisma.tradeIndex.findMany({ orderBy: { name: "asc" } }),
     prisma.trade.findMany({
       orderBy: { postedAt: "desc" },
       take: 50,
-      include: { analyst: { select: { name: true } } }
+      include: {
+        analyst: { select: { name: true } },
+        index: { select: { name: true, lotSize: true } }
+      }
     })
   ]);
 
@@ -38,9 +43,35 @@ export default async function AdminTradesPage() {
       </div>
 
       <Card>
+        <CardTitle>Indexes</CardTitle>
+        <div className="mt-4 space-y-4">
+          <IndexForm />
+          {indexes.length > 0 ? (
+            <div className="grid gap-2 sm:grid-cols-3">
+              {indexes.map((index) => (
+                <div key={index.id} className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                  <p className="font-medium">{index.name}</p>
+                  <p className="text-xs text-muted">Lot size: {index.lotSize}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted">No index created yet.</p>
+          )}
+        </div>
+      </Card>
+
+      <Card>
         <CardTitle>Publish a trade</CardTitle>
         <div className="mt-4">
-          <TradeForm analysts={analysts.map((a) => ({ id: a.id, name: a.name }))} />
+          <TradeForm
+            analysts={analysts.map((a) => ({ id: a.id, name: a.name }))}
+            indexes={indexes.map((index) => ({
+              id: index.id,
+              name: index.name,
+              lotSize: index.lotSize
+            }))}
+          />
         </div>
       </Card>
 
@@ -61,6 +92,7 @@ export default async function AdminTradesPage() {
                     <Badge tone={trade.status === "ACTIVE" ? "accent" : "neutral"}>
                       {tradeStatusLabel(trade.status)}
                     </Badge>
+                    {trade.index && <Badge tone="neutral">{trade.index.name}</Badge>}
                     {trade.isTrialVisible && <Badge tone="neutral">Trial</Badge>}
                   </div>
                   <span className="text-xs text-muted">

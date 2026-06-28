@@ -6,11 +6,26 @@
  *   Admin   -> admin@wealthdesk.in  / Admin@12345
  *   Member  -> member@wealthdesk.in / Member@12345
  */
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { LEGAL_DOCS, LEGAL_SLUGS } from "../lib/legal";
+import { encryptPii, blindIndex } from "../lib/pii";
 
 const prisma = new PrismaClient();
+
+/** Encrypted PAN/Aadhaar + blind-index hashes for a demo user. */
+function kyc(pan: string, aadhaar: string) {
+  return {
+    panNumber: encryptPii(pan),
+    aadhaarNumber: encryptPii(aadhaar),
+    panHash: blindIndex(pan),
+    aadhaarHash: blindIndex(aadhaar)
+  };
+}
+
+const adminKyc = kyc("ADMIN1234A", "100000000001");
+const memberKyc = kyc("MEMBR5678M", "200000000002");
 
 function daysFromNow(days: number): Date {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
@@ -28,8 +43,7 @@ async function main() {
     update: {
       name: "Platform Administrator",
       phone: "9000000001",
-      panNumber: "ADMIN1234A",
-      aadhaarNumber: "100000000001",
+      ...adminKyc,
       passwordHash: adminHash,
       role: "ADMIN",
       isBanned: false,
@@ -42,8 +56,7 @@ async function main() {
       name: "Platform Administrator",
       email: "admin@wealthdesk.in",
       phone: "9000000001",
-      panNumber: "ADMIN1234A",
-      aadhaarNumber: "100000000001",
+      ...adminKyc,
       passwordHash: adminHash,
       role: "ADMIN",
       phoneVerifiedAt: new Date(),
@@ -57,8 +70,7 @@ async function main() {
     update: {
       name: "Demo Member",
       phone: "9000000002",
-      panNumber: "MEMBR5678M",
-      aadhaarNumber: "200000000002",
+      ...memberKyc,
       passwordHash: memberHash,
       role: "USER",
       isBanned: false,
@@ -70,8 +82,7 @@ async function main() {
       name: "Demo Member",
       email: "member@wealthdesk.in",
       phone: "9000000002",
-      panNumber: "MEMBR5678M",
-      aadhaarNumber: "200000000002",
+      ...memberKyc,
       passwordHash: memberHash,
       role: "USER",
       phoneVerifiedAt: new Date(),

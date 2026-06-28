@@ -6,8 +6,14 @@ export const dynamic = "force-dynamic";
 
 /** Escapes a value for safe inclusion in a CSV cell. */
 function csvCell(value: string | number | null | undefined): string {
-  const str = String(value ?? "");
-  if (/[",\n]/.test(str)) {
+  let str = String(value ?? "");
+  // Neutralise spreadsheet formula injection: a cell beginning with one of
+  // these characters is treated as a formula by Excel/Sheets. Prefix with a
+  // single quote so it is rendered as literal text.
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  if (/[",\n\r]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;

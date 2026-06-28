@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * Lightweight edge middleware:
- *  - applies security headers + CSP to every response
+ *  - issues a per-request CSP nonce and applies a strict, nonce-based CSP
+ *  - applies the remaining security headers to every response
  *  - performs a cheap auth-cookie redirect for /dashboard and /admin
  *
  * Authoritative auth + RBAC + ban checks live in lib/session.ts, which every
@@ -13,32 +14,72 @@ const SESSION_COOKIES = [
   "__Secure-authjs.session-token"
 ];
 
-const SECURITY_HEADERS: Record<string, string> = {
+const STATIC_SECURITY_HEADERS: Record<string, string> = {
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-  "Content-Security-Policy": [
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
+};
+
+const IS_DEV = process.env.NODE_ENV !== "production";
+
+/**
+ * Production CSP: `script-src` uses a per-request nonce + 'strict-dynamic', so
+ * only scripts carrying the nonce (Next's own scripts + this app's bundle) and
+ * the scripts they programmatically load (e.g. Razorpay checkout.js, injected by
+ * the trusted React bundle) execute - no 'unsafe-inline'. Modern browsers ignore
+ * the trailing host source under 'strict-dynamic'; it is a fallback for older ones.
+ *
+ * Development CSP: Next's dev server (Fast Refresh / HMR) relies on inline
+ * scripts, eval and a websocket, which a nonce/'strict-dynamic' policy blocks -
+ * so dev relaxes script-src to 'unsafe-inline' 'unsafe-eval' (no nonce token, so
+ * the browser actually honours 'unsafe-inline') and allows the HMR websocket.
+ */
+function buildCsp(nonce: string): string {
+  const scriptSrc = IS_DEV
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://checkout.razorpay.com`;
+
+  const connectSrc = IS_DEV
+    ? "connect-src 'self' ws: wss: https://api.razorpay.com https://lumberjack.razorpay.com"
+    : "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com";
+
+  return [
     "default-src 'self'",
     "img-src 'self' https: data:",
-    "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com",
+    scriptSrc,
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
     "frame-src https://api.razorpay.com https://checkout.razorpay.com",
-    "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com",
+    connectSrc,
     "base-uri 'self'",
-    "form-action 'self'"
-  ].join("; ")
-};
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "object-src 'none'"
+  ].join("; ");
+}
 
-function withSecurityHeaders(response: NextResponse): NextResponse {
-  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+/** Edge-safe (Web Crypto) base64 nonce. */
+function generateNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function applySecurityHeaders(response: NextResponse, csp: string): NextResponse {
+  for (const [key, value] of Object.entries(STATIC_SECURITY_HEADERS)) {
     response.headers.set(key, value);
   }
+  response.headers.set("Content-Security-Policy", csp);
   return response;
 }
 
 export function middleware(request: NextRequest) {
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce);
   const { pathname } = request.nextUrl;
   const isProtected = pathname.startsWith("/dashboard") || pathname.startsWith("/admin");
 
@@ -48,11 +89,18 @@ export function middleware(request: NextRequest) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("error", "auth_required");
       loginUrl.searchParams.set("next", pathname);
-      return withSecurityHeaders(NextResponse.redirect(loginUrl));
+      return applySecurityHeaders(NextResponse.redirect(loginUrl), csp);
     }
   }
 
-  return withSecurityHeaders(NextResponse.next());
+  // Forward the nonce + CSP on the request so Next.js stamps the nonce onto the
+  // framework's own inline scripts during rendering.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("content-security-policy", csp);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  return applySecurityHeaders(response, csp);
 }
 
 export const config = {

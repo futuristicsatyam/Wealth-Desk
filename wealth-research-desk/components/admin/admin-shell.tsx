@@ -13,6 +13,7 @@ import {
   Wallet,
   Receipt,
   Megaphone,
+  LifeBuoy,
   FileText,
   ScrollText,
   Menu,
@@ -32,6 +33,7 @@ const ICONS = {
   payments: Receipt,
   trials: TrendingUp,
   notifications: Megaphone,
+  support: LifeBuoy,
   content: FileText,
   audit: ScrollText
 } as const;
@@ -47,6 +49,7 @@ const NAV: Array<{ label: string; href: string; icon: keyof typeof ICONS }> = [
   { label: "Payments", href: "/admin/payments", icon: "payments" },
   { label: "Trials", href: "/admin/trials", icon: "trials" },
   { label: "Broadcasts", href: "/admin/notifications", icon: "notifications" },
+  { label: "Support", href: "/admin/support", icon: "support" },
   { label: "Content", href: "/admin/content", icon: "content" },
   { label: "Audit Log", href: "/admin/audit", icon: "audit" }
 ];

@@ -10,6 +10,13 @@ export const registerSchema = z.object({
   panNumber: z.string().trim().toUpperCase().regex(panRegex, "Invalid PAN format"),
   aadhaarNumber: z.string().trim().regex(aadhaarRegex, "Aadhaar must be 12 digits"),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  referralCode: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .max(40)
+    .optional()
+    .transform((value) => (value ? value : undefined)),
   riskAccepted: z.literal(true, { errorMap: () => ({ message: "Risk disclosure must be accepted" }) })
 });
 
@@ -36,6 +43,7 @@ export const resetPasswordSchema = z
 export const tradeInputSchema = z
   .object({
     analystId: z.string().min(1, "Select an analyst"),
+    indexId: z.string().min(1, "Select an index"),
     instrument: z.string().trim().min(2).max(60),
     segment: z.string().trim().min(2).max(40),
     tradeType: z.enum(["BUY", "SELL"]),
@@ -53,6 +61,24 @@ export const tradeInputSchema = z
     message: "Target 3 must be positive",
     path: ["target3"]
   });
+
+export const indexSchema = z.object({
+  name: z.string().trim().min(2, "Index name is required").max(40),
+  lotSize: z.number().int().min(1, "Lot size must be at least 1")
+});
+
+export const managedContentSchema = z.object({
+  // Allows "legal:disclaimer", "lot-size-settings", etc. - lowercase words
+  // separated by ":" or "-" only, so it can be used safely in revalidate paths.
+  slug: z
+    .string()
+    .trim()
+    .min(2, "Slug is required")
+    .max(80)
+    .regex(/^[a-z0-9]+([:-][a-z0-9]+)*$/, "Slug may only contain lowercase letters, numbers, ':' and '-'"),
+  title: z.string().trim().min(2, "Title is too short").max(160),
+  body: z.string().trim().min(10, "Body must be at least 10 characters").max(20000)
+});
 
 export const tradeStatusSchema = z.object({
   tradeId: z.string().min(1),

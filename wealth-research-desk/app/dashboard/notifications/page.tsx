@@ -11,6 +11,15 @@ export const dynamic = "force-dynamic";
 
 export default async function NotificationsPage() {
   const user = await requireUser();
+  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
+  await prisma.notification.deleteMany({
+    where: {
+      userId: user.id,
+      createdAt: { lt: cutoff }
+    }
+  });
+
   const notifications = await prisma.notification.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: "desc" },

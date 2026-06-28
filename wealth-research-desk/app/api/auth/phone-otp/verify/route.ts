@@ -24,6 +24,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: firstError(parsed.error) }, { status: 400 });
   }
 
+  // Per-phone ceiling that, unlike the OTP record's attempt counter, does NOT
+  // reset when a new code is requested - bounds total guesses against a number.
+  const phoneLimit = await consumeRateLimit(`otp-verify-phone:${parsed.data.phone}`, 10, 60 * 60 * 1000);
+  if (!phoneLimit.allowed) {
+    return NextResponse.json({ message: "Too many attempts. Please try again later." }, { status: 429 });
+  }
+
   // consume = false: registration consumes the OTP authoritatively later.
   const result = await checkPhoneOtp(parsed.data.phone, parsed.data.otp, false);
   return NextResponse.json({ ok: result.ok, message: result.message }, {

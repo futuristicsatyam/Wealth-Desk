@@ -1,7 +1,9 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { addDays } from "@/lib/date";
+import { decryptPii } from "@/lib/pii";
 import { panRegex, aadhaarRegex } from "@/lib/validations";
+import { otpSecret } from "@/lib/phone-otp";
 
 const TRIAL_DAYS = 5;
 
@@ -48,14 +50,17 @@ export async function activateTrial(params: {
     where: { id: params.userId },
     select: { panNumber: true, aadhaarNumber: true }
   });
-  if (!user?.panNumber || !user.aadhaarNumber) {
+  const pan = decryptPii(user?.panNumber);
+  const aadhaar = decryptPii(user?.aadhaarNumber);
+  if (!pan || !aadhaar) {
     return { ok: false, message: "KYC details are required" };
   }
-  if (!panRegex.test(user.panNumber) || !aadhaarRegex.test(user.aadhaarNumber)) {
+  if (!panRegex.test(pan) || !aadhaarRegex.test(aadhaar)) {
     return { ok: false, message: "Stored KYC details are invalid - contact support" };
   }
 
-  const ipHash = crypto.createHash("sha256").update(params.ipAddress).digest("hex");
+  // Salted so the stored hash is not reversible via a rainbow table of IPs.
+  const ipHash = crypto.createHash("sha256").update(`${otpSecret()}:${params.ipAddress}`).digest("hex");
   const startedAt = new Date();
   const expiresAt = addDays(startedAt, TRIAL_DAYS);
 

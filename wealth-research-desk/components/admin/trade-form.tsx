@@ -12,8 +12,15 @@ import { createTradeAction, type ActionState } from "@/app/admin/actions";
 const initialState: ActionState = { status: "idle", message: "" };
 
 type AnalystOption = { id: string; name: string };
+type IndexOption = { id: string; name: string; lotSize: number };
 
-export function TradeForm({ analysts }: { analysts: AnalystOption[] }) {
+export function TradeForm({
+  analysts,
+  indexes
+}: {
+  analysts: AnalystOption[];
+  indexes: IndexOption[];
+}) {
   const [state, formAction, pending] = useActionState(createTradeAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -28,6 +35,10 @@ export function TradeForm({ analysts }: { analysts: AnalystOption[] }) {
         message="Add an active analyst before publishing trades - trades must be attributed correctly."
       />
     );
+  }
+
+  if (indexes.length === 0) {
+    return <InlineToast tone="error" message="Add at least one index before publishing trades." />;
   }
 
   return (
@@ -51,6 +62,16 @@ export function TradeForm({ analysts }: { analysts: AnalystOption[] }) {
           <Select id="tradeType" name="tradeType" defaultValue="BUY" required>
             <option value="BUY">Buy</option>
             <option value="SELL">Sell</option>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="indexId">Index</Label>
+          <Select id="indexId" name="indexId" required>
+            {indexes.map((index) => (
+              <option key={index.id} value={index.id}>
+                {index.name} (Lot {index.lotSize})
+              </option>
+            ))}
           </Select>
         </div>
         <div>

@@ -121,6 +121,8 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* JSON-LD is a non-executable data block, so CSP does not require a nonce.
+          Adding one causes a hydration mismatch (browsers blank the nonce attr). */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

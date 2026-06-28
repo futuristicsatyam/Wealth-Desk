@@ -2,17 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
-import { broadcastNotification } from "@/lib/notifications";
+import { publishUserNotification } from "@/lib/live-notify";
+import { broadcastNotification, notifyTradeUpdate } from "@/lib/notifications";
+import { LOT_SIZE_SETTINGS_SLUG } from "@/lib/lot-sizes";
 import {
   tradeInputSchema,
   tradeStatusSchema,
   outlookSchema,
   analystSchema,
+  indexSchema,
   planSchema,
   broadcastSchema,
+  managedContentSchema,
   firstError
 } from "@/lib/validations";
 
@@ -35,6 +40,7 @@ export async function createTradeAction(_prev: ActionState, formData: FormData):
 
   const parsed = tradeInputSchema.safeParse({
     analystId: formData.get("analystId"),
+    indexId: formData.get("indexId"),
     instrument: formData.get("instrument"),
     segment: formData.get("segment"),
     tradeType: formData.get("tradeType"),
@@ -53,9 +59,13 @@ export async function createTradeAction(_prev: ActionState, formData: FormData):
   const analyst = await prisma.analyst.findUnique({ where: { id: parsed.data.analystId } });
   if (!analyst) return { status: "error", message: "Selected analyst no longer exists" };
 
+  const selectedIndex = await prisma.tradeIndex.findUnique({ where: { id: parsed.data.indexId } });
+  if (!selectedIndex) return { status: "error", message: "Selected index no longer exists" };
+
   const trade = await prisma.trade.create({
     data: {
       analystId: parsed.data.analystId,
+      indexId: parsed.data.indexId,
       instrument: parsed.data.instrument,
       segment: parsed.data.segment,
       tradeType: parsed.data.tradeType,
@@ -79,12 +89,46 @@ export async function createTradeAction(_prev: ActionState, formData: FormData):
     entity: "Trade",
     entityId: trade.id,
     summary: `Published ${parsed.data.tradeType} ${parsed.data.instrument}`,
-    metadata: { analyst: analyst.name },
+    metadata: { analyst: analyst.name, index: selectedIndex.name, lotSize: selectedIndex.lotSize },
     ipAddress: await clientIp()
   });
 
   revalidatePath("/admin/trades");
   return { status: "success", message: `Trade for ${parsed.data.instrument} published` };
+}
+
+export async function createTradeIndexAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const admin = await requireAdmin();
+
+  const parsed = indexSchema.safeParse({
+    name: formData.get("name"),
+    lotSize: num(formData.get("lotSize"))
+  });
+  if (!parsed.success) return { status: "error", message: firstError(parsed.error) };
+
+  try {
+    const index = await prisma.tradeIndex.create({
+      data: { name: parsed.data.name.toUpperCase(), lotSize: parsed.data.lotSize }
+    });
+
+    await logAudit({
+      actorId: admin.id,
+      actorName: admin.name,
+      action: "TRADE_INDEX_CREATED",
+      entity: "TradeIndex",
+      entityId: index.id,
+      summary: `Created index ${index.name} (lot ${index.lotSize})`,
+      ipAddress: await clientIp()
+    });
+
+    revalidatePath("/admin/trades");
+    return { status: "success", message: `Index ${index.name} created` };
+  } catch {
+    return { status: "error", message: "An index with this name already exists" };
+  }
 }
 
 export async function updateTradeStatusAction(formData: FormData): Promise<void> {
@@ -96,7 +140,14 @@ export async function updateTradeStatusAction(formData: FormData): Promise<void>
   });
   if (!parsed.success) return;
 
+  const existingTrade = await prisma.trade.findUnique({
+    where: { id: parsed.data.tradeId },
+    select: { id: true, instrument: true, status: true, isTrialVisible: true }
+  });
+  if (!existingTrade) return;
+
   const isClosed = parsed.data.status !== "ACTIVE";
+  const updateMessage = parsed.data.updateMessage ?? `Status changed to ${parsed.data.status}`;
   await prisma.$transaction([
     prisma.trade.update({
       where: { id: parsed.data.tradeId },
@@ -106,10 +157,25 @@ export async function updateTradeStatusAction(formData: FormData): Promise<void>
       data: {
         tradeId: parsed.data.tradeId,
         status: parsed.data.status,
-        message: parsed.data.updateMessage ?? `Status changed to ${parsed.data.status}`
+        message: updateMessage
       }
     })
   ]);
+
+  // Notify members on every real status change (e.g. ACTIVE -> TARGET1_HIT, and
+  // also TARGET1_HIT -> TARGET2_HIT), or whenever an explicit update message was
+  // provided. Previously this only fired for the first move away from ACTIVE,
+  // so subscribers missed all subsequent updates.
+  const statusChanged = parsed.data.status !== existingTrade.status;
+  if (statusChanged || parsed.data.updateMessage) {
+    await notifyTradeUpdate({
+      tradeId: existingTrade.id,
+      instrument: existingTrade.instrument,
+      status: parsed.data.status,
+      message: updateMessage,
+      isTrialVisible: existingTrade.isTrialVisible
+    });
+  }
 
   await logAudit({
     actorId: admin.id,
@@ -121,6 +187,8 @@ export async function updateTradeStatusAction(formData: FormData): Promise<void>
     ipAddress: await clientIp()
   });
   revalidatePath("/admin/trades");
+  revalidatePath("/dashboard/trades");
+  revalidatePath("/dashboard/notifications");
 }
 
 /* ---------------------------- Outlooks ---------------------------- */
@@ -337,6 +405,66 @@ export async function createPlanAction(_prev: ActionState, formData: FormData): 
   }
 }
 
+export async function updatePlanAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const planId = String(formData.get("planId") ?? "").trim();
+  if (!planId) return { status: "error", message: "Missing plan reference" };
+
+  const features = String(formData.get("features") ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const parsed = planSchema.safeParse({
+    code: formData.get("code"),
+    name: formData.get("name"),
+    description: formData.get("description") || undefined,
+    planType: formData.get("planType"),
+    amountRupees: num(formData.get("amountRupees")),
+    durationDays: num(formData.get("durationDays")),
+    features,
+    sortOrder: num(formData.get("sortOrder")) || 0,
+    // Preserve the current visibility (managed via the Show/Hide toggle).
+    isActive: formData.get("isActive") !== "false"
+  });
+  if (!parsed.success) return { status: "error", message: firstError(parsed.error) };
+
+  try {
+    const plan = await prisma.planConfig.update({
+      where: { id: planId },
+      data: {
+        code: parsed.data.code,
+        name: parsed.data.name,
+        description: parsed.data.description ?? null,
+        amountPaise: parsed.data.amountRupees * 100,
+        durationDays: parsed.data.durationDays,
+        isTrial: parsed.data.planType === "TRIAL",
+        isActive: parsed.data.isActive,
+        features: parsed.data.features,
+        sortOrder: parsed.data.sortOrder
+      }
+    });
+    await logAudit({
+      actorId: admin.id,
+      actorName: admin.name,
+      action: "PLAN_UPDATED",
+      entity: "PlanConfig",
+      entityId: plan.id,
+      summary: `Updated plan ${parsed.data.name} (${parsed.data.code})`,
+      ipAddress: await clientIp()
+    });
+    revalidatePath("/admin/plans");
+    revalidatePath("/membership");
+    return { status: "success", message: `Plan ${parsed.data.name} updated` };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") return { status: "error", message: "Another plan already uses this code" };
+      if (error.code === "P2025") return { status: "error", message: "This plan no longer exists" };
+    }
+    return { status: "error", message: "Could not update the plan" };
+  }
+}
+
 export async function togglePlanActiveAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const planId = String(formData.get("planId") ?? "");
@@ -401,13 +529,13 @@ export async function updateManagedContentAction(
   formData: FormData
 ): Promise<ActionState> {
   const admin = await requireAdmin();
-  const slug = String(formData.get("slug") ?? "").trim();
-  const title = String(formData.get("title") ?? "").trim();
-  const body = String(formData.get("body") ?? "").trim();
-
-  if (!slug || title.length < 2 || body.length < 10) {
-    return { status: "error", message: "Provide a title and a body of at least 10 characters" };
-  }
+  const parsed = managedContentSchema.safeParse({
+    slug: formData.get("slug"),
+    title: formData.get("title"),
+    body: formData.get("body")
+  });
+  if (!parsed.success) return { status: "error", message: firstError(parsed.error) };
+  const { slug, title, body } = parsed.data;
 
   await prisma.managedContent.upsert({
     where: { slug },
@@ -426,6 +554,7 @@ export async function updateManagedContentAction(
 
   revalidatePath("/admin/content");
   if (slug.startsWith("legal:")) revalidatePath(`/legal/${slug.replace("legal:", "")}`);
+  if (slug === LOT_SIZE_SETTINGS_SLUG) revalidatePath("/dashboard/history");
   return { status: "success", message: "Content saved" };
 }
 
@@ -438,10 +567,42 @@ export async function resolveSupportTicketAction(formData: FormData): Promise<vo
   const status = String(formData.get("status") ?? "RESOLVED");
   if (!["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"].includes(status)) return;
 
+  const existingTicket = await prisma.supportTicket.findUnique({
+    where: { id: ticketId },
+    select: { id: true, userId: true, subject: true, status: true, response: true }
+  });
+  if (!existingTicket) return;
+
+  const statusChanged = existingTicket.status !== status;
+  const responseChanged = (existingTicket.response ?? "") !== (response ?? "");
+
   await prisma.supportTicket.update({
     where: { id: ticketId },
     data: { status: status as never, response }
   });
+
+  if (statusChanged || responseChanged) {
+    const notification = await prisma.notification.create({
+      data: {
+        userId: existingTicket.userId,
+        title: `Support update: ${existingTicket.subject}`,
+        body: response
+          ? `Your ticket is now ${status.replace(/_/g, " ").toLowerCase()}. Response: ${response}`
+          : `Your ticket is now ${status.replace(/_/g, " ").toLowerCase()}.`,
+        channel: "DASHBOARD",
+        eventType: "SUPPORT_TICKET_UPDATED",
+        audience: "self"
+      }
+    });
+
+    publishUserNotification(existingTicket.userId, {
+      id: notification.id,
+      title: notification.title,
+      body: notification.body,
+      createdAt: notification.createdAt.toISOString()
+    });
+  }
+
   await logAudit({
     actorId: admin.id,
     actorName: admin.name,
@@ -452,4 +613,7 @@ export async function resolveSupportTicketAction(formData: FormData): Promise<vo
     ipAddress: await clientIp()
   });
   revalidatePath("/admin/support");
+  revalidatePath("/dashboard/support");
+  revalidatePath("/dashboard/notifications");
+  revalidatePath("/dashboard");
 }

@@ -1,0 +1,13 @@
+# Editor / OS
+.vscode/
+.DS_Store
+
+# Secrets and their backups — safety net, never commit env files (except examples)
+**/.env
+**/.env.*.local
+**/.env.bak.*
+**/*.bak
+
+# Dependencies / build output (also covered per-app, listed here as a backstop)
+**/node_modules/
+**/.next/

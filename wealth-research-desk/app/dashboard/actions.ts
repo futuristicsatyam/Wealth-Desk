@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { supportTicketSchema, firstError } from "@/lib/validations";
@@ -34,7 +35,8 @@ export async function createSupportTicketAction(
   });
 
   revalidatePath("/dashboard/support");
-  return { status: "success", message: "Ticket submitted. Our team will respond by email." };
+  revalidatePath("/admin/support");
+  redirect("/dashboard/support?submitted=1");
 }
 
 /** Marks every unread notification for the current user as read. */

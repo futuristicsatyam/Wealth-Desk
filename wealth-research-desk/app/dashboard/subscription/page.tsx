@@ -6,12 +6,29 @@ import { getEntitlement } from "@/lib/subscription";
 import { getActivePlans } from "@/lib/plans";
 import { getTrialEligibility } from "@/lib/trial";
 import { prisma } from "@/lib/prisma";
+import { APP_URL } from "@/lib/env";
+import { createReferralCodeSeed } from "@/lib/referral";
 import { formatDate, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function SubscriptionPage() {
   const user = await requireUser();
+
+  let referralCode = user.referralCode;
+  if (!referralCode) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const code = createReferralCodeSeed(user.name);
+      const exists = await prisma.user.findUnique({ where: { referralCode: code }, select: { id: true } });
+      if (!exists) {
+        await prisma.user.update({ where: { id: user.id }, data: { referralCode: code } });
+        referralCode = code;
+        break;
+      }
+    }
+  }
+
+  const referralLink = `${APP_URL}/register?ref=${encodeURIComponent(referralCode ?? "")}`;
   const [entitlement, plans, trialEligibility, history] = await Promise.all([
     getEntitlement(user.id),
     getActivePlans(),
@@ -47,6 +64,22 @@ export default async function SubscriptionPage() {
         ) : (
           <p className="text-sm text-muted">You do not have an active subscription.</p>
         )}
+      </Card>
+
+      <Card className="space-y-2">
+        <CardTitle>Refer &amp; earn free access</CardTitle>
+        <p className="text-sm text-muted">
+          Share your code and earn free subscription time when referrals subscribe successfully:
+          5 days (Monthly), 15 days (Quarterly), 1 month (Annual).
+        </p>
+        <div className="rounded-lg border border-border bg-surface px-3 py-2">
+          <p className="text-xs uppercase tracking-wider text-muted">Your referral code</p>
+          <p className="mt-1 text-lg font-semibold">{referralCode ?? "Generating..."}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface px-3 py-2">
+          <p className="text-xs uppercase tracking-wider text-muted">Referral link</p>
+          <p className="mt-1 break-all text-sm">{referralLink}</p>
+        </div>
       </Card>
 
       <div>
