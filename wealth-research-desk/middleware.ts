@@ -38,7 +38,7 @@ const IS_DEV = process.env.NODE_ENV !== "production";
  */
 function buildCsp(nonce: string): string {
   const scriptSrc = IS_DEV
-    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com"
     : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://checkout.razorpay.com`;
 
   const connectSrc = IS_DEV
