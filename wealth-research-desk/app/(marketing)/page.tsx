@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShieldCheck, LineChart, Bell, Users, Gauge, FileCheck, ArrowRight } from "lucide-react";
+import { ShieldCheck, LineChart, Bell, Gauge, FileCheck, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PricingTable } from "@/components/pricing-table";

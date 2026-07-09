@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Card } from "@/components/ui/card";
-import { Mail, MessageSquare, ShieldCheck } from "lucide-react";
+import { Mail, MessageSquare } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Contact",

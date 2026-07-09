@@ -59,10 +59,7 @@ export async function markAllNotificationsReadAction(): Promise<void> {
  * token is stored on the user and burned by the bot webhook once the chat is
  * bound. Generating a new link overwrites (and thus invalidates) any prior one.
  */
-export async function createTelegramLinkAction(
-  _prev: TelegramLinkState,
-  _formData: FormData
-): Promise<TelegramLinkState> {
+export async function createTelegramLinkAction(): Promise<TelegramLinkState> {
   const user = await requireUser();
 
   const linkToken = crypto.randomBytes(24).toString("base64url");

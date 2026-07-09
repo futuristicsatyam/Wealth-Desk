@@ -21,6 +21,9 @@ export function DottedSurface({ className, ...props }: DottedSurfaceProps) {
 
 	useEffect(() => {
 		if (!containerRef.current) return;
+		// Capture the node now so the cleanup below references the same element
+		// even if the ref has since changed (react-hooks/exhaustive-deps).
+		const container = containerRef.current;
 
 		const SEPARATION = 150;
 		const AMOUNTX = 40;
@@ -46,10 +49,9 @@ export function DottedSurface({ className, ...props }: DottedSurfaceProps) {
 		renderer.setSize(window.innerWidth, window.innerHeight);
 		renderer.setClearColor(scene.fog.color, 0);
 
-		containerRef.current.appendChild(renderer.domElement);
+		container.appendChild(renderer.domElement);
 
 		// Create particles
-		const particles: THREE.Points[] = [];
 		const positions: number[] = [];
 		const colors: number[] = [];
 
@@ -172,8 +174,8 @@ export function DottedSurface({ className, ...props }: DottedSurfaceProps) {
 
 				sceneRef.current.renderer.dispose();
 
-				if (containerRef.current && sceneRef.current.renderer.domElement) {
-					containerRef.current.removeChild(
+				if (sceneRef.current.renderer.domElement) {
+					container.removeChild(
 						sceneRef.current.renderer.domElement,
 					);
 				}
