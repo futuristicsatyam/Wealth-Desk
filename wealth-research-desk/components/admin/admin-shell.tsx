@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  BarChart3,
   TrendingUp,
   Compass,
   Users,
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 
 const ICONS = {
   dashboard: LayoutDashboard,
+  analytics: BarChart3,
   trades: TrendingUp,
   outlooks: Compass,
   analysts: UserCog,
@@ -40,6 +42,7 @@ const ICONS = {
 
 const NAV: Array<{ label: string; href: string; icon: keyof typeof ICONS }> = [
   { label: "Overview", href: "/admin", icon: "dashboard" },
+  { label: "Analytics", href: "/admin/analytics", icon: "analytics" },
   { label: "Trades", href: "/admin/trades", icon: "trades" },
   { label: "Market Outlooks", href: "/admin/outlooks", icon: "outlooks" },
   { label: "Analysts", href: "/admin/analysts", icon: "analysts" },
@@ -104,7 +107,9 @@ export function AdminShell({
 
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-64 shrink-0 border-r border-border bg-surface lg:block">{Sidebar}</aside>
+      <aside className="hidden w-64 shrink-0 border-r border-border bg-surface lg:sticky lg:top-0 lg:block lg:h-screen">
+        {Sidebar}
+      </aside>
 
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">

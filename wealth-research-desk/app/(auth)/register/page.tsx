@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { RegisterForm } from "@/components/auth/register-form";
 import { getCurrentUser } from "@/lib/session";
 
-export const metadata: Metadata = { title: "Create account" };
+export const metadata: Metadata = { title: "Create account", robots: { index: false, follow: false } };
 
 export default async function RegisterPage({
   searchParams

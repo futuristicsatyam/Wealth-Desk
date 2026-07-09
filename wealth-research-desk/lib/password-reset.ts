@@ -39,7 +39,9 @@ export async function consumePasswordReset(
   const [user] = await prisma.$transaction([
     prisma.user.update({
       where: { id: record.userId },
-      data: { passwordHash },
+      // Bump sessionVersion so every previously-issued JWT is invalidated —
+      // resetting the password logs the user out of all existing sessions.
+      data: { passwordHash, sessionVersion: { increment: 1 } },
       select: { id: true, name: true }
     }),
     prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),

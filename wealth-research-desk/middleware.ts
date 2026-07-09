@@ -47,7 +47,9 @@ function buildCsp(nonce: string): string {
 
   return [
     "default-src 'self'",
-    "img-src 'self' https: data:",
+    // Scoped instead of a blanket `https:` wildcard. Razorpay hosts kept for
+    // any checkout branding rendered outside its iframe.
+    "img-src 'self' data: https://*.razorpay.com",
     scriptSrc,
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
@@ -56,7 +58,11 @@ function buildCsp(nonce: string): string {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "object-src 'none'"
+    "object-src 'none'",
+    // Auto-upgrade http subresources to https (defends first-visit/mixed content).
+    // PRODUCTION ONLY — in dev the site is served over http://localhost, so this
+    // would upgrade the CSS/JS asset requests to https and break local loading.
+    ...(IS_DEV ? [] : ["upgrade-insecure-requests"])
   ].join("; ");
 }
 

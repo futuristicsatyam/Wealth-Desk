@@ -7,6 +7,7 @@ import { StatCard } from "@/components/stat-card";
 import { PageBanner } from "@/components/ui/page-banner";
 import { requireUser } from "@/lib/session";
 import { getEntitlement } from "@/lib/subscription";
+import { getTrialPlanInfo } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -20,6 +21,8 @@ export default async function DashboardHome({
   const { kyc } = await searchParams;
   const user = await requireUser();
   const entitlement = await getEntitlement(user.id);
+  // Only needed for the "activate access" prompt shown to non-members.
+  const trial = entitlement.active ? null : await getTrialPlanInfo();
 
   const [activeTrades, unread, recentNotifications] = await Promise.all([
     prisma.trade.count({ where: { status: "ACTIVE" } }),
@@ -63,7 +66,7 @@ export default async function DashboardHome({
           <div>
             <CardTitle>Activate your access</CardTitle>
             <p className="mt-1 text-sm text-muted">
-              Start the one-time 5-day trial or choose a paid plan to unlock research.
+              Start the one-time {trial?.days}-day trial or choose a paid plan to unlock research.
             </p>
           </div>
           <Link href="/dashboard/subscription">

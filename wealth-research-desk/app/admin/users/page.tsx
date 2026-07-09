@@ -1,9 +1,12 @@
+import type { Prisma, Role } from "@prisma/client";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PageBanner } from "@/components/ui/page-banner";
+import { UsersFilter } from "@/components/admin/users-filter";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
@@ -11,14 +14,58 @@ import { updateUserRoleAction, toggleUserBanAction } from "@/app/admin/actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminUsersPage() {
+const ROLES: Role[] = ["USER", "ANALYST", "ADMIN"];
+
+export default async function AdminUsersPage({
+  searchParams
+}: {
+  searchParams: Promise<{ q?: string; role?: string; status?: string; sub?: string; error?: string }>;
+}) {
   const admin = await requireAdmin();
+  const { q: qRaw, role: roleRaw, status: statusRaw, sub: subRaw, error } = await searchParams;
+
+  const ACTION_ERRORS: Record<string, string> = {
+    self_role: "You cannot change your own role.",
+    self_ban: "You cannot suspend your own account.",
+    last_admin: "You cannot remove or suspend the last administrator.",
+    not_found: "That user no longer exists.",
+    invalid_role: "Invalid role selected."
+  };
+  const errorMessage = error ? ACTION_ERRORS[error] : undefined;
+
+  const q = qRaw?.trim() ?? "";
+  const role = roleRaw && ROLES.includes(roleRaw as Role) ? (roleRaw as Role) : "";
+  const status = statusRaw === "active" || statusRaw === "suspended" ? statusRaw : "";
+  const sub = subRaw === "subscribed" || subRaw === "free" ? subRaw : "";
+  const filtered = Boolean(q || role || status || sub);
+  const now = new Date();
+
+  const where: Prisma.UserWhereInput = {
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { email: { contains: q, mode: "insensitive" } }
+          ]
+        }
+      : {}),
+    ...(role ? { role } : {}),
+    ...(status ? { isBanned: status === "suspended" } : {}),
+    ...(sub === "subscribed"
+      ? { subscriptions: { some: { status: "ACTIVE", endDate: { gte: now } } } }
+      : {}),
+    ...(sub === "free"
+      ? { subscriptions: { none: { status: "ACTIVE", endDate: { gte: now } } } }
+      : {})
+  };
+
   const users = await prisma.user.findMany({
+    where,
     orderBy: { createdAt: "desc" },
     take: 100,
     include: {
       subscriptions: {
-        where: { status: "ACTIVE", endDate: { gte: new Date() } },
+        where: { status: "ACTIVE", endDate: { gte: now } },
         select: { planName: true },
         take: 1
       }
@@ -35,10 +82,21 @@ export default async function AdminUsersPage() {
         </p>
       </div>
 
+      {errorMessage && <PageBanner tone="warning" message={errorMessage} />}
+
+      <UsersFilter q={q} role={role} status={status} sub={sub} />
+
       <Card className="space-y-3">
-        <CardTitle>{users.length} registered users</CardTitle>
+        <CardTitle>
+          {users.length}
+          {users.length === 100 ? "+" : ""} {filtered ? "matching" : "registered"} user
+          {users.length === 1 ? "" : "s"}
+        </CardTitle>
         {users.length === 0 ? (
-          <EmptyState title="No users yet" />
+          <EmptyState
+            title={filtered ? "No users match your filters" : "No users yet"}
+            hint={filtered ? "Try clearing or changing the filters above." : undefined}
+          />
         ) : (
           <div className="space-y-3">
             {users.map((user) => {

@@ -1,17 +1,69 @@
+import type { Prisma } from "@prisma/client";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatCard } from "@/components/stat-card";
+import { SubscriptionsFilter } from "@/components/admin/subscriptions-filter";
 import { prisma } from "@/lib/prisma";
+import { expireOverdueSubscriptions } from "@/lib/subscription";
 import { formatDate, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminSubscriptionsPage() {
+export default async function AdminSubscriptionsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ q?: string; status?: string; plan?: string }>;
+}) {
   const now = new Date();
+  // Self-heal lapsed ACTIVE rows so records and counts reflect reality.
+  await expireOverdueSubscriptions();
+
+  // Real configured plans drive the plan dropdown, so newly created plans appear
+  // automatically instead of a hardcoded list.
+  const planConfigs = await prisma.planConfig.findMany({
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { code: true, name: true }
+  });
+  const planCodes = new Set(planConfigs.map((p) => p.code));
+
+  const { q: qRaw, status: statusRaw, plan: planRaw } = await searchParams;
+  const q = qRaw?.trim() ?? "";
+  const status =
+    statusRaw && ["active", "expired", "cancelled", "pending"].includes(statusRaw) ? statusRaw : "";
+  const plan = planRaw && planCodes.has(planRaw) ? planRaw : "";
+  const filtered = Boolean(q || status || plan);
+
+  const statusWhere: Prisma.SubscriptionWhereInput =
+    status === "active"
+      ? { status: "ACTIVE", endDate: { gte: now } }
+      : status === "expired"
+        ? { status: "EXPIRED" }
+        : status === "cancelled"
+          ? { status: "CANCELLED" }
+          : status === "pending"
+            ? { status: "PENDING" }
+            : {};
+
+  const where: Prisma.SubscriptionWhereInput = {
+    ...(q
+      ? {
+          user: {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { email: { contains: q, mode: "insensitive" } }
+            ]
+          }
+        }
+      : {}),
+    ...statusWhere,
+    ...(plan ? { planCode: plan } : {})
+  };
+
   const [subscriptions, activeCount, trialCount] = await Promise.all([
     prisma.subscription.findMany({
+      where,
       orderBy: { createdAt: "desc" },
       take: 100,
       include: { user: { select: { name: true, email: true } } }
@@ -35,13 +87,18 @@ export default async function AdminSubscriptionsPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Active now" value={String(activeCount)} />
         <StatCard label="Trials issued" value={String(trialCount)} />
-        <StatCard label="Total records" value={String(subscriptions.length)} />
+        <StatCard label={filtered ? "Matching records" : "Total records"} value={`${subscriptions.length}${subscriptions.length === 100 ? "+" : ""}`} />
       </div>
 
+      <SubscriptionsFilter q={q} status={status} plan={plan} plans={planConfigs} />
+
       <Card className="space-y-3">
-        <CardTitle>All subscriptions</CardTitle>
+        <CardTitle>{filtered ? "Matching subscriptions" : "All subscriptions"}</CardTitle>
         {subscriptions.length === 0 ? (
-          <EmptyState title="No subscriptions yet" />
+          <EmptyState
+            title={filtered ? "No subscriptions match your filters" : "No subscriptions yet"}
+            hint={filtered ? "Try clearing or changing the filters above." : undefined}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

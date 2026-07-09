@@ -16,8 +16,8 @@ const LEGAL_LINKS: Array<[string, string]> = [
 ];
 
 export function PublicFooter() {
-  const sebi = process.env.SEBI_REGISTRATION || "INH000000000";
-  const gstin = process.env.GSTIN || "27AAAAA0000A1Z5";
+  // const sebi = process.env.SEBI_REGISTRATION || "INH000000000";
+  // const gstin = process.env.GSTIN || "27AAAAA0000A1Z5";
 
   return (
     <footer className="mt-20 border-t border-border bg-surface">
@@ -55,8 +55,8 @@ export function PublicFooter() {
         </div>
         <div className="space-y-2 text-xs text-muted">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">Compliance</p>
-          <p>SEBI Research Analyst Reg. No: {sebi}</p>
-          <p>GSTIN: {gstin}</p>
+          {/* <p>SEBI Research Analyst Reg. No: {sebi}</p>
+          <p>GSTIN: {gstin}</p> */}
           <p>We publish research only. We do not execute trades or manage funds.</p>
         </div>
       </div>

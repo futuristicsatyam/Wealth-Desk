@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,12 @@ const initialState: ActionState = { status: "idle", message: "" };
 
 export function RegisterForm({ initialReferralCode = "" }: { initialReferralCode?: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Preserve an invitation/return target through register -> login -> destination.
+  const nextParam = searchParams.get("next");
+  const loginHref = nextParam
+    ? `/login?registered=1&next=${encodeURIComponent(nextParam)}`
+    : "/login?registered=1";
   const [step, setStep] = useState<1 | 2>(1);
   const [otpPending, startOtp] = useTransition();
   const [otpNotice, setOtpNotice] = useState<string | null>(null);
@@ -31,9 +37,13 @@ export function RegisterForm({ initialReferralCode = "" }: { initialReferralCode
     riskAccepted: false
   });
 
-  if (state.status === "success") {
-    setTimeout(() => router.push("/login?registered=1"), 800);
-  }
+  // On success, redirect to login once (in an effect, not during render, so a
+  // re-render can't schedule duplicate navigations/timers).
+  useEffect(() => {
+    if (state.status !== "success") return;
+    const timer = setTimeout(() => router.push(loginHref), 800);
+    return () => clearTimeout(timer);
+  }, [state.status, loginHref, router]);
 
   function update(field: keyof typeof details, value: string | boolean) {
     setDetails((prev) => ({ ...prev, [field]: value }));
@@ -214,7 +224,7 @@ export function RegisterForm({ initialReferralCode = "" }: { initialReferralCode
 
       <p className="text-center text-sm text-muted">
         Already a member?{" "}
-        <Link href="/login" className="text-accent">
+        <Link href={nextParam ? `/login?next=${encodeURIComponent(nextParam)}` : "/login"} className="text-accent">
           Sign in
         </Link>
       </p>

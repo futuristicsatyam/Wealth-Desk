@@ -3,13 +3,31 @@ import { z } from "zod";
 export const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 export const aadhaarRegex = /^[0-9]{12}$/;
 
+// A small blocklist of the most common weak passwords (checked case-insensitively).
+const COMMON_PASSWORDS = new Set([
+  "password", "password1", "password123", "12345678", "123456789", "1234567890",
+  "qwerty123", "11111111", "00000000", "abc123456", "iloveyou1", "welcome123"
+]);
+
+/**
+ * Shared password rule for registration and reset: min 8 chars, must mix letters
+ * and numbers, and must not be an obviously common password. (Login is not
+ * subject to this — existing accounts keep working.)
+ */
+const passwordField = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .max(128)
+  .refine((v) => /[A-Za-z]/.test(v) && /\d/.test(v), "Use at least one letter and one number")
+  .refine((v) => !COMMON_PASSWORDS.has(v.toLowerCase()), "This password is too common - choose a stronger one");
+
 export const registerSchema = z.object({
   name: z.string().trim().min(2, "Name is too short").max(80),
   email: z.string().trim().email("Enter a valid email").toLowerCase(),
   phone: z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number"),
   panNumber: z.string().trim().toUpperCase().regex(panRegex, "Invalid PAN format"),
   aadhaarNumber: z.string().trim().regex(aadhaarRegex, "Aadhaar must be 12 digits"),
-  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  password: passwordField,
   referralCode: z
     .string()
     .trim()
@@ -32,7 +50,7 @@ export const forgotPasswordSchema = z.object({
 export const resetPasswordSchema = z
   .object({
     token: z.string().min(10),
-    password: z.string().min(8, "Password must be at least 8 characters").max(128),
+    password: passwordField,
     confirmPassword: z.string()
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -42,7 +60,12 @@ export const resetPasswordSchema = z
 
 export const tradeInputSchema = z
   .object({
-    analystId: z.string().min(1, "Select an analyst"),
+    // Attribution is optional - a trade may be published without an analyst.
+    analystId: z
+      .string()
+      .trim()
+      .transform((value) => value || undefined)
+      .optional(),
     indexId: z.string().min(1, "Select an index"),
     instrument: z.string().trim().min(2).max(60),
     segment: z.string().trim().min(2).max(40),
@@ -54,7 +77,12 @@ export const tradeInputSchema = z
     target3: z.number().positive().optional(),
     riskRating: z.number().int().min(1).max(5),
     rationale: z.string().trim().min(10).max(2000),
-    chartImageUrl: z.string().url().optional().or(z.literal("")),
+    chartImageUrl: z
+      .string()
+      .url()
+      .refine((v) => /^https?:\/\//i.test(v), "Chart image URL must start with http:// or https://")
+      .optional()
+      .or(z.literal("")),
     isTrialVisible: z.boolean().default(false)
   })
   .refine((data) => data.target3 === undefined || data.target3 > 0, {
@@ -87,7 +115,12 @@ export const tradeStatusSchema = z.object({
 });
 
 export const outlookSchema = z.object({
-  analystId: z.string().min(1, "Select an analyst"),
+  // Attribution is optional - an outlook may be published without an analyst.
+  analystId: z
+    .string()
+    .trim()
+    .transform((value) => value || undefined)
+    .optional(),
   nifty: z.string().trim().min(4).max(400),
   bankNifty: z.string().trim().min(4).max(400),
   volatility: z.string().trim().min(4).max(400),
@@ -114,12 +147,20 @@ export const planSchema = z
     planType: z.enum(["TRIAL", "MONTHLY", "QUARTERLY", "ANNUAL"]),
     amountRupees: z.number().int().min(0),
     durationDays: z.number().int().min(1).max(400),
+    // Free days a referrer earns when someone buys this plan (0 = none).
+    referralBonusDays: z.number().int().min(0).max(400).default(0),
     features: z.array(z.string().trim().min(1)).max(12),
     sortOrder: z.number().int().min(0).default(0),
-    isActive: z.boolean().default(true)
+    isActive: z.boolean().default(true),
+    // Special/private plan: hidden from public pricing, reachable only via link.
+    isPrivate: z.boolean().default(false),
+    // Optional cap on distinct members who may redeem the access link.
+    maxRedemptions: z.number().int().min(1).max(100000).optional()
   })
-  .refine((data) => data.planType === "TRIAL" || data.amountRupees > 0, {
-    message: "Paid plans must have an amount greater than zero",
+  // A plan may be free (amount 0) only when it is a trial OR a private/special
+  // plan (e.g. a complimentary invite). Public paid plans must cost > 0.
+  .refine((data) => data.planType === "TRIAL" || data.isPrivate || data.amountRupees > 0, {
+    message: "Public paid plans must have an amount greater than zero",
     path: ["amountRupees"]
   });
 
@@ -142,7 +183,13 @@ export const trialActivateSchema = z.object({
 });
 
 export const createOrderSchema = z.object({
-  planCode: z.string().trim().min(1).toUpperCase()
+  planCode: z.string().trim().min(1).toUpperCase(),
+  // Required when purchasing a private/special plan; ignored for public plans.
+  accessToken: z.string().trim().min(8).max(128).optional()
+});
+
+export const redeemPlanSchema = z.object({
+  accessToken: z.string().trim().min(8).max(128)
 });
 
 export const verifyPaymentSchema = z.object({

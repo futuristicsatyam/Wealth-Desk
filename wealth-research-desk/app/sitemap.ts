@@ -3,7 +3,8 @@ import { APP_URL } from "@/lib/env";
 import { LEGAL_SLUGS } from "@/lib/legal";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const staticRoutes = ["", "/about", "/membership", "/performance", "/faq", "/contact", "/login", "/register"];
+  // Auth pages are intentionally excluded (noindex — not useful in search).
+  const staticRoutes = ["", "/about", "/membership", "/performance", "/faq", "/contact"];
   const legalRoutes = LEGAL_SLUGS.map((slug) => `/legal/${slug}`);
 
   return [...staticRoutes, ...legalRoutes].map((route) => ({

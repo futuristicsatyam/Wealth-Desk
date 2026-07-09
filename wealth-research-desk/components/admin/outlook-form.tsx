@@ -19,17 +19,14 @@ export function OutlookForm({ analysts }: { analysts: Array<{ id: string; name: 
     if (state.status === "success") formRef.current?.reset();
   }, [state.status]);
 
-  if (analysts.length === 0) {
-    return <InlineToast tone="error" message="Add an active analyst before posting outlooks." />;
-  }
-
   return (
     <form ref={formRef} action={formAction} className="space-y-4">
       {state.status === "error" && <InlineToast tone="error" message={state.message} />}
       {state.status === "success" && <InlineToast tone="success" message={state.message} />}
       <div>
-        <Label htmlFor="analystId">Analyst</Label>
-        <Select id="analystId" name="analystId" required>
+        <Label htmlFor="analystId">Analyst (optional)</Label>
+        <Select id="analystId" name="analystId" defaultValue="">
+          <option value="">Unattributed</option>
           {analysts.map((a) => (
             <option key={a.id} value={a.id}>{a.name}</option>
           ))}

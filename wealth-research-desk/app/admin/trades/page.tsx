@@ -22,12 +22,19 @@ const STATUS_OPTIONS = [
 ] as const;
 
 export default async function AdminTradesPage() {
+  // Track every trade posted today — active, closed, target-hit or SL-hit.
+  // Older trades live in the trade history pages.
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfToday.getDate() + 1);
+
   const [analysts, indexes, trades] = await Promise.all([
     prisma.analyst.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
     prisma.tradeIndex.findMany({ orderBy: { name: "asc" } }),
     prisma.trade.findMany({
+      where: { postedAt: { gte: startOfToday, lt: startOfTomorrow } },
       orderBy: { postedAt: "desc" },
-      take: 50,
       include: {
         analyst: { select: { name: true } },
         index: { select: { name: true, lotSize: true } }
@@ -76,9 +83,12 @@ export default async function AdminTradesPage() {
       </Card>
 
       <Card className="space-y-3">
-        <CardTitle>All trades</CardTitle>
+        <CardTitle>Today&apos;s trades</CardTitle>
         {trades.length === 0 ? (
-          <EmptyState title="No trades published yet" />
+          <EmptyState
+            title="No trades posted today"
+            hint="Trades from earlier days are in the trade history pages."
+          />
         ) : (
           <div className="space-y-3">
             {trades.map((trade) => (
@@ -96,7 +106,7 @@ export default async function AdminTradesPage() {
                     {trade.isTrialVisible && <Badge tone="neutral">Trial</Badge>}
                   </div>
                   <span className="text-xs text-muted">
-                    {trade.analyst.name} &middot; {formatDateTime(trade.postedAt)}
+                    {trade.analyst?.name ?? "Unattributed"} &middot; {formatDateTime(trade.postedAt)}
                   </span>
                 </div>
                 <p className="mt-2 text-xs text-muted">

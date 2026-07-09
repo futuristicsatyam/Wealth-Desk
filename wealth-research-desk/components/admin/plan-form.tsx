@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
@@ -18,10 +18,13 @@ export type EditablePlan = {
   description: string | null;
   amountPaise: number;
   durationDays: number;
+  referralBonusDays: number;
   isTrial: boolean;
   isActive: boolean;
   features: string[];
   sortOrder: number;
+  isPrivate: boolean;
+  maxRedemptions: number | null;
 };
 
 /** Derives the plan-type select value from stored fields. */
@@ -39,6 +42,7 @@ export function PlanForm({ plan }: { plan?: EditablePlan }) {
     initialState
   );
   const formRef = useRef<HTMLFormElement>(null);
+  const [isPrivate, setIsPrivate] = useState(plan?.isPrivate ?? false);
 
   useEffect(() => {
     // Only clear the "create" form on success; keep edited values in place.
@@ -121,6 +125,20 @@ export function PlanForm({ plan }: { plan?: EditablePlan }) {
             defaultValue={plan?.sortOrder ?? 0}
           />
         </div>
+        <div>
+          <Label htmlFor={`referralBonusDays-${plan?.id ?? "new"}`}>Referral bonus (days)</Label>
+          <Input
+            id={`referralBonusDays-${plan?.id ?? "new"}`}
+            name="referralBonusDays"
+            type="number"
+            min="0"
+            placeholder="0"
+            defaultValue={plan?.referralBonusDays ?? 0}
+          />
+          <p className="mt-1 text-xs text-muted">
+            Free days a referrer earns when someone buys this plan. 0 = no reward.
+          </p>
+        </div>
       </div>
       <div>
         <Label htmlFor={`description-${plan?.id ?? "new"}`}>Description</Label>
@@ -142,6 +160,53 @@ export function PlanForm({ plan }: { plan?: EditablePlan }) {
           required
         />
       </div>
+
+      {/* Private / special plan controls */}
+      <div className="space-y-3 rounded-lg border border-border bg-surface p-3">
+        <label className="flex items-start gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            name="isPrivate"
+            value="true"
+            checked={isPrivate}
+            onChange={(e) => setIsPrivate(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-[rgb(var(--accent))]"
+          />
+          <span>
+            <span className="font-medium">Private / special plan</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Hidden from public pricing. Reachable only via a secret access link. Set the amount to 0
+              for a free complimentary plan (members activate instantly, no payment).
+            </span>
+          </span>
+        </label>
+
+        {isPrivate && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor={`maxRedemptions-${plan?.id ?? "new"}`}>Member limit (optional)</Label>
+              <Input
+                id={`maxRedemptions-${plan?.id ?? "new"}`}
+                name="maxRedemptions"
+                type="number"
+                min="1"
+                placeholder="Unlimited"
+                defaultValue={plan?.maxRedemptions ?? undefined}
+              />
+            </div>
+            {isEdit && (
+              <label className="flex items-end gap-2 pb-2 text-sm">
+                <input type="checkbox" name="regenerateToken" value="true" className="h-4 w-4 accent-[rgb(var(--accent))]" />
+                <span>
+                  Regenerate link
+                  <span className="block text-xs text-muted">Invalidates the old link</span>
+                </span>
+              </label>
+            )}
+          </div>
+        )}
+      </div>
+
       <Button type="submit" disabled={pending}>
         {pending ? (isEdit ? "Saving..." : "Creating...") : isEdit ? "Save changes" : "Create plan"}
       </Button>

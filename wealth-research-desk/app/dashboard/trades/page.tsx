@@ -3,10 +3,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TradeCard, type TradeCardData } from "@/components/trade-card";
+import { ContentGuard } from "@/components/dashboard/content-guard";
 import { PageBanner } from "@/components/ui/page-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireUser } from "@/lib/session";
 import { getEntitlement } from "@/lib/subscription";
+import { getTrialPlanInfo } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/format";
 
@@ -17,13 +19,14 @@ export default async function TradesPage() {
   const entitlement = await getEntitlement(user.id);
 
   if (!entitlement.active) {
+    const trial = await getTrialPlanInfo();
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold">Trades</h1>
         <Card className="space-y-3 text-center">
           <p className="text-base font-semibold">An active subscription is required</p>
           <p className="text-sm text-muted">
-            Start the 5-day trial or choose a plan to unlock daily research.
+            Start the {trial.days}-day trial or choose a plan to unlock daily research.
           </p>
           <div>
             <Link href="/dashboard/subscription">
@@ -57,7 +60,7 @@ export default async function TradesPage() {
     target3: trade.target3?.toString() ?? null,
     riskRating: trade.riskRating,
     status: trade.status,
-    analystName: trade.analyst.name,
+    analystName: trade.analyst?.name ?? "Research Desk",
     rationale: trade.rationale,
     postedAt: formatDateTime(trade.postedAt)
   }));
@@ -85,11 +88,13 @@ export default async function TradesPage() {
           hint="New setups are published through the trading day."
         />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {cards.map((trade) => (
-            <TradeCard key={trade.id} trade={trade} />
-          ))}
-        </div>
+        <ContentGuard watermark={user.email}>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {cards.map((trade) => (
+              <TradeCard key={trade.id} trade={trade} />
+            ))}
+          </div>
+        </ContentGuard>
       )}
     </div>
   );

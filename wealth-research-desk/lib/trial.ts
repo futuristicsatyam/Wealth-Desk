@@ -4,8 +4,7 @@ import { addDays } from "@/lib/date";
 import { decryptPii } from "@/lib/pii";
 import { panRegex, aadhaarRegex } from "@/lib/validations";
 import { otpSecret } from "@/lib/phone-otp";
-
-const TRIAL_DAYS = 5;
+import { getTrialPlanInfo } from "@/lib/plans";
 
 export type TrialEligibility = {
   eligible: boolean;
@@ -59,10 +58,14 @@ export async function activateTrial(params: {
     return { ok: false, message: "Stored KYC details are invalid - contact support" };
   }
 
+  // Drive the trial's length, name, code and price from the configured trial
+  // plan so admin changes take effect (falls back to defaults if none exists).
+  const trial = await getTrialPlanInfo();
+
   // Salted so the stored hash is not reversible via a rainbow table of IPs.
   const ipHash = crypto.createHash("sha256").update(`${otpSecret()}:${params.ipAddress}`).digest("hex");
   const startedAt = new Date();
-  const expiresAt = addDays(startedAt, TRIAL_DAYS);
+  const expiresAt = addDays(startedAt, trial.days);
 
   try {
     await prisma.$transaction([
@@ -80,10 +83,10 @@ export async function activateTrial(params: {
         data: {
           userId: params.userId,
           planType: "TRIAL",
-          planCode: "TRIAL",
-          planName: "5-Day Trial",
+          planCode: trial.code,
+          planName: trial.name,
           status: "ACTIVE",
-          amountPaise: 0,
+          amountPaise: trial.amountPaise,
           startDate: startedAt,
           endDate: expiresAt
         }

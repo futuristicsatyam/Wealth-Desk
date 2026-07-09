@@ -1,34 +1,14 @@
-import Link from "next/link";
 import { Card, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireUser } from "@/lib/session";
-import { getEntitlement } from "@/lib/subscription";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function OutlookPage() {
-  const user = await requireUser();
-  const entitlement = await getEntitlement(user.id);
-
-  if (!entitlement.active) {
-    return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-semibold">Market Outlook</h1>
-        <Card className="space-y-3 text-center">
-          <p className="text-base font-semibold">Subscription required</p>
-          <p className="text-sm text-muted">Daily outlooks are available to active members.</p>
-          <div>
-            <Link href="/dashboard/subscription">
-              <Button>View plans</Button>
-            </Link>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+  // Market Outlook is open to all signed-in users (including non-plan).
+  await requireUser();
 
   const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
 
@@ -57,7 +37,7 @@ export default async function OutlookPage() {
             <Card key={o.id} className="space-y-3">
               <div className="flex items-center justify-between">
                 <CardTitle>{formatDate(o.date)}</CardTitle>
-                <span className="text-xs text-muted">{o.analyst.name}</span>
+                <span className="text-xs text-muted">{o.analyst?.name ?? "Research Desk"}</span>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label="Nifty 50" value={o.nifty} />

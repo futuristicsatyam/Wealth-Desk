@@ -19,6 +19,9 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
   if (!user || user.isBanned) return null;
+  // Reject tokens issued before a credential change (e.g. password reset), so a
+  // reset logs out every existing session, not just the browser that reset.
+  if (session.user.sessionVersion !== user.sessionVersion) return null;
   return user;
 });
 

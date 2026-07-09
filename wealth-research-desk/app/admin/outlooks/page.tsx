@@ -40,7 +40,7 @@ export default async function AdminOutlooksPage() {
               <li key={o.id} className="rounded-lg border border-border bg-surface px-3 py-2.5">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium">{formatDate(o.date)}</p>
-                  <span className="text-xs text-muted">{o.analyst.name}</span>
+                  <span className="text-xs text-muted">{o.analyst?.name ?? "Unattributed"}</span>
                 </div>
                 <p className="mt-1 text-xs text-muted">
                   Nifty: {o.nifty} &middot; Bank Nifty: {o.bankNifty}

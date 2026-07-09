@@ -4,7 +4,7 @@ import { verifyOrigin } from "@/lib/csrf";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/prisma";
 import { getRazorpayClient, isRazorpayConfigured } from "@/lib/razorpay";
-import { planTypeFromDuration } from "@/lib/subscription";
+import { planTypeFromDuration, countPlanRedemptions, hasActivePlan } from "@/lib/subscription";
 import { createOrderSchema, firstError } from "@/lib/validations";
 
 export const runtime = "nodejs";
@@ -47,6 +47,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "This plan cannot be purchased online" }, { status: 400 });
   }
 
+  // Private/special plans require a matching access token and honour the
+  // redemption cap. This is the authoritative server-side gate — the link is
+  // the only way to reach a private plan's checkout.
+  if (plan.isPrivate) {
+    if (!parsed.data.accessToken || parsed.data.accessToken !== plan.accessToken) {
+      return NextResponse.json({ message: "A valid access link is required for this plan" }, { status: 403 });
+    }
+    if (await hasActivePlan(user.id, plan.code)) {
+      return NextResponse.json({ message: "You already have this plan active" }, { status: 409 });
+    }
+    if (plan.maxRedemptions != null && (await countPlanRedemptions(plan.code)) >= plan.maxRedemptions) {
+      return NextResponse.json({ message: "This access link has reached its member limit" }, { status: 403 });
+    }
+  }
+
   try {
     const order = await getRazorpayClient().orders.create({
       amount: plan.amountPaise,
@@ -65,7 +80,8 @@ export async function POST(request: NextRequest) {
         planCode: plan.code,
         planName: plan.name,
         planType: planTypeFromDuration(plan.durationDays, false),
-        durationDays: plan.durationDays
+        durationDays: plan.durationDays,
+        referralBonusDays: plan.referralBonusDays
       }
     });
 

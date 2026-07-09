@@ -1,6 +1,8 @@
 "use server";
 
+import crypto from "crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +10,6 @@ import { requireAdmin } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
 import { publishUserNotification } from "@/lib/live-notify";
 import { broadcastNotification, notifyTradeUpdate } from "@/lib/notifications";
-import { LOT_SIZE_SETTINGS_SLUG } from "@/lib/lot-sizes";
 import {
   tradeInputSchema,
   tradeStatusSchema,
@@ -30,6 +31,19 @@ async function clientIp(): Promise<string> {
 
 function num(value: FormDataEntryValue | null): number {
   return Number(String(value ?? "").trim());
+}
+
+/** URL-safe, unguessable token embedded in a private plan's access link. */
+function generateAccessToken(): string {
+  return crypto.randomBytes(24).toString("base64url");
+}
+
+/** Reads an optional positive integer form field; returns undefined when blank. */
+function optionalInt(value: FormDataEntryValue | null): number | undefined {
+  const raw = String(value ?? "").trim();
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
 }
 
 /* ----------------------------- Trades ----------------------------- */
@@ -56,15 +70,19 @@ export async function createTradeAction(_prev: ActionState, formData: FormData):
   });
   if (!parsed.success) return { status: "error", message: firstError(parsed.error) };
 
-  const analyst = await prisma.analyst.findUnique({ where: { id: parsed.data.analystId } });
-  if (!analyst) return { status: "error", message: "Selected analyst no longer exists" };
+  // Attribution is optional; only validate the analyst when one was chosen.
+  let analyst = null;
+  if (parsed.data.analystId) {
+    analyst = await prisma.analyst.findUnique({ where: { id: parsed.data.analystId } });
+    if (!analyst) return { status: "error", message: "Selected analyst no longer exists" };
+  }
 
   const selectedIndex = await prisma.tradeIndex.findUnique({ where: { id: parsed.data.indexId } });
   if (!selectedIndex) return { status: "error", message: "Selected index no longer exists" };
 
   const trade = await prisma.trade.create({
     data: {
-      analystId: parsed.data.analystId,
+      analystId: parsed.data.analystId ?? null,
       indexId: parsed.data.indexId,
       instrument: parsed.data.instrument,
       segment: parsed.data.segment,
@@ -89,7 +107,7 @@ export async function createTradeAction(_prev: ActionState, formData: FormData):
     entity: "Trade",
     entityId: trade.id,
     summary: `Published ${parsed.data.tradeType} ${parsed.data.instrument}`,
-    metadata: { analyst: analyst.name, index: selectedIndex.name, lotSize: selectedIndex.lotSize },
+    metadata: { analyst: analyst?.name ?? "Unattributed", index: selectedIndex.name, lotSize: selectedIndex.lotSize },
     ipAddress: await clientIp()
   });
 
@@ -211,7 +229,7 @@ export async function createOutlookAction(_prev: ActionState, formData: FormData
 
   try {
     const outlook = await prisma.marketOutlook.create({
-      data: { ...parsed.data, date: today }
+      data: { ...parsed.data, analystId: parsed.data.analystId ?? null, date: today }
     });
     await logAudit({
       actorId: admin.id,
@@ -287,20 +305,21 @@ export async function updateUserRoleAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const userId = String(formData.get("userId") ?? "");
   const role = String(formData.get("role") ?? "");
-  if (!["USER", "ANALYST", "ADMIN"].includes(role)) return;
+  if (!["USER", "ANALYST", "ADMIN"].includes(role)) redirect("/admin/users?error=invalid_role");
 
   // Guard 1: an admin cannot change their own role (prevents self-lockout).
-  if (userId === admin.id) return;
+  if (userId === admin.id) redirect("/admin/users?error=self_role");
 
   const target = await prisma.user.findUnique({ where: { id: userId } });
-  if (!target || target.role === role) return;
+  if (!target) redirect("/admin/users?error=not_found");
+  if (target.role === role) return; // no-op: already this role
 
   // Guard 2: never remove the last remaining admin.
   if (target.role === "ADMIN" && role !== "ADMIN") {
     const otherAdmins = await prisma.user.count({
       where: { role: "ADMIN", isBanned: false, id: { not: userId } }
     });
-    if (otherAdmins === 0) return;
+    if (otherAdmins === 0) redirect("/admin/users?error=last_admin");
   }
 
   await prisma.user.update({ where: { id: userId }, data: { role: role as never } });
@@ -321,20 +340,20 @@ export async function toggleUserBanAction(formData: FormData): Promise<void> {
   const userId = String(formData.get("userId") ?? "");
 
   // Guard: an admin can never ban themselves.
-  if (userId === admin.id) return;
+  if (userId === admin.id) redirect("/admin/users?error=self_ban");
 
   const target = await prisma.user.findUnique({ where: { id: userId } });
-  if (!target) return;
+  if (!target) redirect("/admin/users?error=not_found");
 
   // Guard: do not ban the last non-banned admin.
   if (!target.isBanned && target.role === "ADMIN") {
     const otherAdmins = await prisma.user.count({
       where: { role: "ADMIN", isBanned: false, id: { not: userId } }
     });
-    if (otherAdmins === 0) return;
+    if (otherAdmins === 0) redirect("/admin/users?error=last_admin");
   }
 
-  const reason = String(formData.get("reason") ?? "").trim() || null;
+  const reason = String(formData.get("reason") ?? "").trim().slice(0, 500) || null;
   await prisma.user.update({
     where: { id: userId },
     data: { isBanned: !target.isBanned, bannedReason: target.isBanned ? null : reason }
@@ -361,6 +380,8 @@ export async function createPlanAction(_prev: ActionState, formData: FormData): 
     .map((line) => line.trim())
     .filter(Boolean);
 
+  const isPrivate = formData.get("isPrivate") === "true";
+
   const parsed = planSchema.safeParse({
     code: formData.get("code"),
     name: formData.get("name"),
@@ -368,9 +389,12 @@ export async function createPlanAction(_prev: ActionState, formData: FormData): 
     planType: formData.get("planType"),
     amountRupees: num(formData.get("amountRupees")),
     durationDays: num(formData.get("durationDays")),
+    referralBonusDays: num(formData.get("referralBonusDays")) || 0,
     features,
     sortOrder: num(formData.get("sortOrder")) || 0,
-    isActive: formData.get("isActive") !== "false"
+    isActive: formData.get("isActive") !== "false",
+    isPrivate,
+    maxRedemptions: optionalInt(formData.get("maxRedemptions"))
   });
   if (!parsed.success) return { status: "error", message: firstError(parsed.error) };
 
@@ -382,10 +406,15 @@ export async function createPlanAction(_prev: ActionState, formData: FormData): 
         description: parsed.data.description,
         amountPaise: parsed.data.amountRupees * 100,
         durationDays: parsed.data.durationDays,
+        referralBonusDays: parsed.data.referralBonusDays,
         isTrial: parsed.data.planType === "TRIAL",
         isActive: parsed.data.isActive,
         features: parsed.data.features,
-        sortOrder: parsed.data.sortOrder
+        sortOrder: parsed.data.sortOrder,
+        isPrivate: parsed.data.isPrivate,
+        // Private plans get a fresh access token; public plans get none.
+        accessToken: parsed.data.isPrivate ? generateAccessToken() : null,
+        maxRedemptions: parsed.data.isPrivate ? parsed.data.maxRedemptions ?? null : null
       }
     });
     await logAudit({
@@ -394,14 +423,23 @@ export async function createPlanAction(_prev: ActionState, formData: FormData): 
       action: "PLAN_CREATED",
       entity: "PlanConfig",
       entityId: plan.id,
-      summary: `Created plan ${parsed.data.name} (${parsed.data.code})`,
+      summary: `Created ${parsed.data.isPrivate ? "private " : ""}plan ${parsed.data.name} (${parsed.data.code})`,
       ipAddress: await clientIp()
     });
     revalidatePath("/admin/plans");
     revalidatePath("/membership");
-    return { status: "success", message: `Plan ${parsed.data.name} created` };
-  } catch {
-    return { status: "error", message: "A plan with this code already exists" };
+    return {
+      status: "success",
+      message: parsed.data.isPrivate
+        ? `Private plan ${parsed.data.name} created — copy its access link below`
+        : `Plan ${parsed.data.name} created`
+    };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { status: "error", message: "A plan with this code already exists" };
+    }
+    console.error("[createPlanAction] failed", error);
+    return { status: "error", message: "Could not create the plan" };
   }
 }
 
@@ -415,6 +453,9 @@ export async function updatePlanAction(_prev: ActionState, formData: FormData): 
     .map((line) => line.trim())
     .filter(Boolean);
 
+  const isPrivate = formData.get("isPrivate") === "true";
+  const regenerateToken = formData.get("regenerateToken") === "true";
+
   const parsed = planSchema.safeParse({
     code: formData.get("code"),
     name: formData.get("name"),
@@ -422,12 +463,28 @@ export async function updatePlanAction(_prev: ActionState, formData: FormData): 
     planType: formData.get("planType"),
     amountRupees: num(formData.get("amountRupees")),
     durationDays: num(formData.get("durationDays")),
+    referralBonusDays: num(formData.get("referralBonusDays")) || 0,
     features,
     sortOrder: num(formData.get("sortOrder")) || 0,
     // Preserve the current visibility (managed via the Show/Hide toggle).
-    isActive: formData.get("isActive") !== "false"
+    isActive: formData.get("isActive") !== "false",
+    isPrivate,
+    maxRedemptions: optionalInt(formData.get("maxRedemptions"))
   });
   if (!parsed.success) return { status: "error", message: firstError(parsed.error) };
+
+  const existing = await prisma.planConfig.findUnique({
+    where: { id: planId },
+    select: { accessToken: true }
+  });
+  if (!existing) return { status: "error", message: "This plan no longer exists" };
+
+  // Token lifecycle: public plans have none; private plans keep their existing
+  // token unless one is missing or an explicit regeneration was requested.
+  let accessToken: string | null = null;
+  if (parsed.data.isPrivate) {
+    accessToken = regenerateToken || !existing.accessToken ? generateAccessToken() : existing.accessToken;
+  }
 
   try {
     const plan = await prisma.planConfig.update({
@@ -438,10 +495,14 @@ export async function updatePlanAction(_prev: ActionState, formData: FormData): 
         description: parsed.data.description ?? null,
         amountPaise: parsed.data.amountRupees * 100,
         durationDays: parsed.data.durationDays,
+        referralBonusDays: parsed.data.referralBonusDays,
         isTrial: parsed.data.planType === "TRIAL",
         isActive: parsed.data.isActive,
         features: parsed.data.features,
-        sortOrder: parsed.data.sortOrder
+        sortOrder: parsed.data.sortOrder,
+        isPrivate: parsed.data.isPrivate,
+        accessToken,
+        maxRedemptions: parsed.data.isPrivate ? parsed.data.maxRedemptions ?? null : null
       }
     });
     await logAudit({
@@ -461,6 +522,7 @@ export async function updatePlanAction(_prev: ActionState, formData: FormData): 
       if (error.code === "P2002") return { status: "error", message: "Another plan already uses this code" };
       if (error.code === "P2025") return { status: "error", message: "This plan no longer exists" };
     }
+    console.error("[updatePlanAction] failed", error);
     return { status: "error", message: "Could not update the plan" };
   }
 }
@@ -554,7 +616,6 @@ export async function updateManagedContentAction(
 
   revalidatePath("/admin/content");
   if (slug.startsWith("legal:")) revalidatePath(`/legal/${slug.replace("legal:", "")}`);
-  if (slug === LOT_SIZE_SETTINGS_SLUG) revalidatePath("/dashboard/history");
   return { status: "success", message: "Content saved" };
 }
 
@@ -563,7 +624,7 @@ export async function updateManagedContentAction(
 export async function resolveSupportTicketAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const ticketId = String(formData.get("ticketId") ?? "");
-  const response = String(formData.get("response") ?? "").trim() || null;
+  const response = String(formData.get("response") ?? "").trim().slice(0, 2000) || null;
   const status = String(formData.get("status") ?? "RESOLVED");
   if (!["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"].includes(status)) return;
 

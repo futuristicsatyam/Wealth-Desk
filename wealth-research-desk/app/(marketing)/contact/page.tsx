@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
   const supportEmail = process.env.SUPPORT_EMAIL || "support@wealthdesk.in";
-  const sebi = process.env.SEBI_REGISTRATION || "INH000000000";
+  // const sebi = process.env.SEBI_REGISTRATION || "INH000000000";
 
   return (
     <main className="container-page py-16">
@@ -32,11 +32,6 @@ export default function ContactPage() {
           <MessageSquare className="text-accent" size={20} />
           <p className="font-semibold">Member support</p>
           <p className="text-sm text-muted">Raise a ticket from your dashboard for the fastest response.</p>
-        </Card>
-        <Card className="space-y-2">
-          <ShieldCheck className="text-accent" size={20} />
-          <p className="font-semibold">Compliance</p>
-          <p className="text-sm text-muted">SEBI Research Analyst Reg. No: {sebi}</p>
         </Card>
       </div>
     </main>

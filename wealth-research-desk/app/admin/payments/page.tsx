@@ -3,19 +3,34 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatCard } from "@/components/stat-card";
+import { PaymentsFilter } from "@/components/admin/payments-filter";
 import { prisma } from "@/lib/prisma";
 import { formatInr, formatInrPrecise, formatDateTime, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPaymentsPage() {
-  const [payments, captured] = await Promise.all([
+export default async function AdminPaymentsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ plan?: string }>;
+}) {
+  const { plan: planRaw } = await searchParams;
+  const planCode = planRaw?.trim() ? planRaw.trim().toUpperCase() : null;
+  const where = planCode ? { planCode } : {};
+
+  const [plans, payments, captured, totalCount] = await Promise.all([
+    prisma.planConfig.findMany({
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: { code: true, name: true }
+    }),
     prisma.payment.findMany({
+      where,
       orderBy: { createdAt: "desc" },
       take: 100,
       include: { user: { select: { name: true, email: true } } }
     }),
-    prisma.payment.aggregate({ where: { status: "CAPTURED" }, _sum: { amountPaise: true } })
+    prisma.payment.aggregate({ where: { status: "CAPTURED", ...where }, _sum: { amountPaise: true } }),
+    prisma.payment.count({ where })
   ]);
 
   return (
@@ -25,20 +40,31 @@ export default async function AdminPaymentsPage() {
           <h1 className="text-2xl font-semibold">Payments</h1>
           <p className="mt-1 text-sm text-muted">All payment attempts and outcomes.</p>
         </div>
-        <a href="/admin/revenue/export" download>
-          <Button variant="secondary" size="sm">Export CSV</Button>
-        </a>
+        <div className="flex items-center gap-2">
+          <PaymentsFilter plans={plans} current={planCode ?? ""} />
+          <a href="/admin/revenue/export" download>
+            <Button variant="secondary" size="sm">Export CSV</Button>
+          </a>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard label="Captured revenue" value={formatInr(captured._sum.amountPaise ?? 0)} />
-        <StatCard label="Total records" value={String(payments.length)} />
+        <StatCard
+          label={planCode ? "Captured revenue (plan)" : "Captured revenue"}
+          value={formatInr(captured._sum.amountPaise ?? 0)}
+        />
+        <StatCard label={planCode ? "Records (plan)" : "Total records"} value={String(totalCount)} />
       </div>
 
       <Card className="space-y-3">
-        <CardTitle>Payment log</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>Payment log</CardTitle>
+          {totalCount > payments.length && (
+            <p className="text-xs text-muted">Showing latest {payments.length} of {totalCount}</p>
+          )}
+        </div>
         {payments.length === 0 ? (
-          <EmptyState title="No payments recorded" />
+          <EmptyState title={planCode ? "No payments for this plan" : "No payments recorded"} />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

@@ -2,12 +2,12 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PricingTable } from "@/components/pricing-table";
 import { requireUser } from "@/lib/session";
-import { getEntitlement } from "@/lib/subscription";
-import { getActivePlans } from "@/lib/plans";
+import { getEntitlement, expireOverdueSubscriptions, displaySubscriptionStatus } from "@/lib/subscription";
+import { getActivePlans, getTrialPlanInfo } from "@/lib/plans";
 import { getTrialEligibility } from "@/lib/trial";
 import { prisma } from "@/lib/prisma";
 import { APP_URL } from "@/lib/env";
-import { createReferralCodeSeed } from "@/lib/referral";
+import { createReferralCodeSeed, referralBonusLabel } from "@/lib/referral";
 import { formatDate, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -28,17 +28,29 @@ export default async function SubscriptionPage() {
     }
   }
 
+  // Self-heal any subscriptions whose paid period has ended before we read the
+  // history, so a lapsed plan never shows as "Active".
+  await expireOverdueSubscriptions(user.id);
+
   const referralLink = `${APP_URL}/register?ref=${encodeURIComponent(referralCode ?? "")}`;
-  const [entitlement, plans, trialEligibility, history] = await Promise.all([
+  const [entitlement, plans, trialEligibility, trial, history] = await Promise.all([
     getEntitlement(user.id),
     getActivePlans(),
     getTrialEligibility(user.id),
+    getTrialPlanInfo(),
     prisma.subscription.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
       take: 10
     })
   ]);
+
+  // Referral bonus copy derived per-plan from the configured plans, so it always
+  // reflects each plan's own reward (including any new plan an admin adds).
+  const referralBonusCopy = plans
+    .filter((p) => !p.isTrial && p.referralBonusDays > 0)
+    .map((p) => `${referralBonusLabel(p.referralBonusDays)} (${p.name})`)
+    .join(", ");
 
   const hasKyc = Boolean(user.panNumber && user.aadhaarNumber);
 
@@ -69,8 +81,9 @@ export default async function SubscriptionPage() {
       <Card className="space-y-2">
         <CardTitle>Refer &amp; earn free access</CardTitle>
         <p className="text-sm text-muted">
-          Share your code and earn free subscription time when referrals subscribe successfully:
-          5 days (Monthly), 15 days (Quarterly), 1 month (Annual).
+          {referralBonusCopy
+            ? `Share your code and earn free subscription time when referrals subscribe successfully: ${referralBonusCopy}.`
+            : "Share your code and earn free subscription time when referrals subscribe to a paid plan."}
         </p>
         <div className="rounded-lg border border-border bg-surface px-3 py-2">
           <p className="text-xs uppercase tracking-wider text-muted">Your referral code</p>
@@ -86,7 +99,7 @@ export default async function SubscriptionPage() {
         <h2 className="text-lg font-semibold">Available plans</h2>
         <p className="mt-1 text-xs text-muted">
           {trialEligibility.eligible
-            ? "You are eligible for the one-time 5-day trial."
+            ? `You are eligible for the one-time ${trial.days}-day trial.`
             : `Trial: ${trialEligibility.reason ?? "unavailable"}.`}
         </p>
         <div className="mt-4">
@@ -116,26 +129,29 @@ export default async function SubscriptionPage() {
                 </tr>
               </thead>
               <tbody>
-                {history.map((sub) => (
+                {history.map((sub) => {
+                  const status = displaySubscriptionStatus(sub);
+                  return (
                   <tr key={sub.id} className="border-t border-border">
                     <td className="py-2.5">{sub.planName}</td>
                     <td className="py-2.5">
                       <Badge
                         tone={
-                          sub.status === "ACTIVE"
+                          status === "ACTIVE"
                             ? "success"
-                            : sub.status === "EXPIRED" || sub.status === "CANCELLED"
+                            : status === "EXPIRED" || status === "CANCELLED"
                               ? "neutral"
                               : "warning"
                         }
                       >
-                        {titleCase(sub.status)}
+                        {titleCase(status)}
                       </Badge>
                     </td>
                     <td className="py-2.5 text-muted">{formatDate(sub.startDate)}</td>
                     <td className="py-2.5 text-muted">{formatDate(sub.endDate)}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -27,6 +27,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: firstError(parsed.error) }, { status: 400 });
   }
 
+  // Per-phone cap so a chosen number can't be SMS-bombed by rotating IPs
+  // (the per-IP limit above only throttles a single source).
+  const perPhone = await consumeRateLimit(`otp-send-phone:${parsed.data.phone}`, 5, 60 * 60 * 1000);
+  if (!perPhone.allowed) {
+    return NextResponse.json(
+      { message: "Too many codes requested for this number. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   const result = await sendPhoneOtp(parsed.data.phone);
   if (!result.ok) {
     return NextResponse.json({ message: result.message }, { status: 400 });

@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
-import { LEGAL_DOCS, LEGAL_SLUGS, isLegalSlug } from "@/lib/legal";
+import { buildLegalDocs, LEGAL_SLUGS, LEGAL_TITLES, isLegalSlug } from "@/lib/legal";
+import { getTrialPlanInfo } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +18,15 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   if (!isLegalSlug(slug)) return { title: "Legal" };
-  return { title: LEGAL_DOCS[slug].title };
+  return { title: LEGAL_TITLES[slug] };
 }
 
 export default async function LegalPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   if (!isLegalSlug(slug)) notFound();
 
-  const fallback = LEGAL_DOCS[slug];
+  const trial = await getTrialPlanInfo();
+  const fallback = buildLegalDocs(trial.days)[slug];
   // ManagedContent overrides allow admins to edit legal copy without a deploy.
   const override = await prisma.managedContent.findUnique({ where: { slug: `legal:${slug}` } });
 

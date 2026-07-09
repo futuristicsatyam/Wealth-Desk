@@ -3,35 +3,47 @@
 @tailwind utilities;
 
 /*
- * Theme tokens. All colours are semantic so components never reference
- * raw "text-white" - light/dark switch by swapping these variables only.
+ * ── Design tokens ──────────────────────────────────────────────────────────
+ * "Obsidian fintech": near-black canvas + violet→indigo premium accent.
+ * Market semantics stay green(up)/red(down) so signals never blur into brand.
+ * All colours are semantic RGB channels ("R G B") consumed as
+ * rgb(var(--token) / <alpha-value>) so components never hardcode hex and the
+ * light/dark switch only swaps these variables.
  */
 :root,
 .dark {
-  --background: 7 16 25;
-  --surface: 13 23 34;
-  --card: 18 29 42;
-  --border: 38 52 68;
-  --foreground: 237 241 245;
-  --muted: 148 161 176;
-  --accent: 201 174 122;
-  --positive: 52 199 145;
-  --negative: 244 113 116;
-  --warning: 232 178 86;
+  --background: 8 9 12;        /* #08090C obsidian */
+  --surface: 14 15 20;         /* #0E0F14 */
+  --card: 19 21 32;            /* #131520 charcoal, faint blue cast */
+  --elevated: 27 30 43;        /* #1B1E2B raised surface / hover */
+  --border: 34 36 47;          /* #22242F */
+  --border-strong: 51 54 70;   /* #333646 */
+  --foreground: 244 245 250;   /* #F4F5FA */
+  --muted: 154 160 180;        /* #9AA0B4 */
+  --accent: 139 92 246;        /* #8B5CF6 violet */
+  --accent-strong: 99 102 241; /* #6366F1 indigo — gradient partner */
+  --positive: 52 211 153;      /* #34D399 up */
+  --negative: 248 113 116;     /* #F87171 down */
+  --warning: 251 191 36;       /* #FBBF24 */
+  --ring: 139 92 246;
   color-scheme: dark;
 }
 
 .light {
-  --background: 245 247 250;
-  --surface: 255 255 255;
+  --background: 247 247 251;   /* #F7F7FB */
+  --surface: 255 255 255;      /* #FFFFFF */
   --card: 255 255 255;
-  --border: 223 228 234;
-  --foreground: 24 35 49;
-  --muted: 90 104 122;
-  --accent: 146 113 58;
-  --positive: 18 138 99;
-  --negative: 198 58 62;
-  --warning: 173 122 30;
+  --elevated: 243 243 248;     /* #F3F3F8 */
+  --border: 230 231 238;       /* #E6E7EE */
+  --border-strong: 207 209 220;/* #CFD1DC */
+  --foreground: 20 21 31;      /* #14151F */
+  --muted: 86 91 110;          /* #565B6E */
+  --accent: 124 58 237;        /* #7C3AED violet-600 for AA on white */
+  --accent-strong: 79 70 229;  /* #4F46E5 indigo-600 */
+  --positive: 5 150 105;       /* #059669 */
+  --negative: 220 38 38;       /* #DC2626 */
+  --warning: 180 83 9;         /* #B45309 */
+  --ring: 124 58 237;
   color-scheme: light;
 }
 
@@ -39,37 +51,184 @@
   border-color: rgb(var(--border));
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 body {
   @apply bg-background text-foreground antialiased;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+/* Tabular, monospaced figures for prices, tickers and data columns. */
+.font-mono,
+.tabular {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ── Layout helpers ─────────────────────────────────────────────────────── */
 .container-page {
   @apply mx-auto w-full max-w-content px-4 sm:px-6;
 }
 
+/* ── Text & surface treatments ──────────────────────────────────────────── */
 .text-gradient {
-  background: linear-gradient(100deg, rgb(var(--foreground)), rgb(var(--accent)));
+  background: linear-gradient(
+    100deg,
+    rgb(var(--foreground)),
+    rgb(var(--accent)) 60%,
+    rgb(var(--accent-strong))
+  );
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
+.text-accent-gradient {
+  background: linear-gradient(100deg, rgb(var(--accent)), rgb(var(--accent-strong)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Faint dotted grid — data-terminal backdrop. */
 .surface-grid {
-  background-image: radial-gradient(rgb(var(--border) / 0.5) 1px, transparent 1px);
+  background-image: radial-gradient(rgb(var(--border) / 0.55) 1px, transparent 1px);
   background-size: 28px 28px;
 }
 
+/* Radial spotlight glow, typically layered behind a hero. */
+.spotlight {
+  background:
+    radial-gradient(55% 50% at 20% 0%, rgb(var(--accent) / 0.16), transparent 70%),
+    radial-gradient(50% 45% at 85% 20%, rgb(var(--accent-strong) / 0.14), transparent 70%),
+    radial-gradient(40% 40% at 60% 80%, rgb(var(--accent) / 0.06), transparent 70%);
+}
+
+/* Soft blurred colour orb for layered fintech backdrops. */
+.orb {
+  border-radius: 9999px;
+  filter: blur(60px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Frosted glass panel — for overlays, sticky bars, floating cards. */
+.glass {
+  background: rgb(var(--card) / 0.6);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgb(var(--border) / 0.8);
+}
+
+/* Cyan glow — for primary CTAs and live indicators. */
+.glow-accent {
+  box-shadow: 0 0 0 1px rgb(var(--accent) / 0.35), 0 8px 30px -8px rgb(var(--accent) / 0.45);
+}
+
+/* Animated gradient hairline border. Wrap content; child sits on --card. */
+.gradient-border {
+  position: relative;
+  background: rgb(var(--card));
+  border-radius: 1rem;
+}
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    130deg,
+    rgb(var(--accent) / 0.6),
+    rgb(var(--border) / 0.1) 40%,
+    rgb(var(--accent-strong) / 0.5)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Live pulsing dot (e.g. "live setups"). */
+.pulse-dot {
+  position: relative;
+}
+.pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Shimmer for skeleton loaders. */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--elevated)) 0%,
+    rgb(var(--border-strong) / 0.6) 50%,
+    rgb(var(--elevated)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* ── Keyframes ──────────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes ping {
+  75%, 100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+@keyframes float-y-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9px); }
+}
+.float { animation: float-y 6s ease-in-out infinite; }
+.float-slow { animation: float-y-slow 8s ease-in-out infinite; }
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
 .scrollbar-thin {
   scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border-strong)) transparent;
 }
 .scrollbar-thin::-webkit-scrollbar {
   height: 6px;
   width: 6px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: rgb(var(--border));
+  background: rgb(var(--border-strong));
   border-radius: 9999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--muted));
 }
 
 table {

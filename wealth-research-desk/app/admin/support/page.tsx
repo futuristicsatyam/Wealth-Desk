@@ -1,3 +1,4 @@
+import type { Prisma, TicketStatus } from "@prisma/client";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -5,19 +6,50 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatCard } from "@/components/stat-card";
+import { SupportFilter } from "@/components/admin/support-filter";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime, titleCase } from "@/lib/format";
 import { resolveSupportTicketAction } from "@/app/admin/actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminSupportPage() {
-  const tickets = await prisma.supportTicket.findMany({
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    take: 100,
-    include: { user: { select: { name: true, email: true } } }
-  });
-  const open = tickets.filter((t) => t.status === "OPEN" || t.status === "IN_PROGRESS").length;
+const TICKET_STATUSES: TicketStatus[] = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
+const TICKET_PRIORITIES = ["HIGH", "MEDIUM", "LOW"];
+
+export default async function AdminSupportPage({
+  searchParams
+}: {
+  searchParams: Promise<{ q?: string; status?: string; priority?: string }>;
+}) {
+  const { q = "", status = "", priority = "" } = await searchParams;
+  const term = q.trim();
+
+  const where: Prisma.SupportTicketWhereInput = {
+    ...(TICKET_STATUSES.includes(status as TicketStatus) ? { status: status as TicketStatus } : {}),
+    ...(TICKET_PRIORITIES.includes(priority) ? { priority } : {}),
+    ...(term
+      ? {
+          OR: [
+            { subject: { contains: term, mode: "insensitive" } },
+            { message: { contains: term, mode: "insensitive" } },
+            { user: { name: { contains: term, mode: "insensitive" } } },
+            { user: { email: { contains: term, mode: "insensitive" } } }
+          ]
+        }
+      : {})
+  };
+
+  const [tickets, totalCount, open] = await Promise.all([
+    prisma.supportTicket.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      take: 100,
+      include: { user: { select: { name: true, email: true } } }
+    }),
+    // Stat cards show global totals, independent of the active filters.
+    prisma.supportTicket.count(),
+    prisma.supportTicket.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } })
+  ]);
 
   return (
     <div className="space-y-6">
@@ -28,13 +60,18 @@ export default async function AdminSupportPage() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard label="Open / in progress" value={String(open)} />
-        <StatCard label="Total tickets" value={String(tickets.length)} />
+        <StatCard label="Total tickets" value={String(totalCount)} />
       </div>
 
       <Card className="space-y-3">
-        <CardTitle>All tickets</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle>All tickets</CardTitle>
+          <SupportFilter q={q} status={status} priority={priority} />
+        </div>
         {tickets.length === 0 ? (
-          <EmptyState title="No support tickets" />
+          <EmptyState
+            title={term || status || priority ? "No tickets match your filters" : "No support tickets"}
+          />
         ) : (
           <div className="space-y-3">
             {tickets.map((ticket) => (

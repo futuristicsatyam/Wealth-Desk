@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
       riskRating: trade.riskRating,
       status: trade.status,
       rationale: trade.rationale,
-      analystName: trade.analyst.name,
+      analystName: trade.analyst?.name ?? "Research Desk",
       postedAt: formatDateTime(trade.postedAt)
     }))
   });

@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
 import { Card } from "@/components/ui/card";
+import { getTrialPlanInfo } from "@/lib/plans";
 
 export const metadata: Metadata = {
   title: "FAQ",
   description: "Frequently asked questions about Wealth Research Desk membership and research."
 };
 
-const FAQS = [
+export const dynamic = "force-dynamic";
+
+const buildFaqs = (trialDays: number) => [
   ["Do you execute trades for members?", "No. We publish research and educational trade ideas. Members execute independently in their own broker accounts."],
   ["Do you guarantee profits?", "No. Markets carry risk and no outcome is guaranteed. We publish a documented rationale and a risk rating for every idea."],
-  ["Can the trial be reused?", "The 5-day trial is available once per verified user. Completing KYC (PAN and Aadhaar) is required to start it."],
+  ["Can the trial be reused?", `The ${trialDays}-day trial is available once per verified user. Completing KYC (PAN and Aadhaar) is required to start it.`],
   ["How are payments handled?", "Payments are processed securely by Razorpay. We never store card or bank credentials. A GST invoice is issued for every paid transaction."],
   ["Can I cancel my subscription?", "You can stop auto-renewal at any time from the billing page. Access continues until the end of the paid period."],
   ["How do I get support?", "Raise a ticket from your dashboard support page, or email our support address listed in the footer."]
 ];
 
-export default function FaqPage() {
+export default async function FaqPage() {
+  const trial = await getTrialPlanInfo();
+  const FAQS = buildFaqs(trial.days);
+
   return (
     <main className="container-page py-16">
       <p className="text-xs uppercase tracking-[0.2em] text-accent">Help centre</p>

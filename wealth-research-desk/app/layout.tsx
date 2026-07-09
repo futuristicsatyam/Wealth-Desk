@@ -1,9 +1,25 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ComplianceBanner } from "@/components/compliance-banner";
+import { CookieConsent } from "@/components/cookie-consent";
 import { APP_URL } from "@/lib/env";
+
+// Self-hosted at build time (no CDN request) — satisfies the strict `font-src 'self'` CSP.
+const fontSans = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-sans"
+});
+
+// Tabular monospace for prices, tickers and data columns.
+const fontMono = JetBrains_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-mono"
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
@@ -30,11 +46,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${fontSans.variable} ${fontMono.variable}`} suppressHydrationWarning>
       <body>
         <ThemeProvider nonce={nonce}>
           <ComplianceBanner />
           {children}
+          <CookieConsent />
         </ThemeProvider>
       </body>
     </html>

@@ -80,6 +80,9 @@ model User {
   role            Role      @default(USER)
   isBanned        Boolean   @default(false)
   bannedReason    String?
+  // Bumped on password reset to invalidate all previously-issued JWTs. A token
+  // whose embedded version != this value is rejected in getCurrentUser().
+  sessionVersion  Int       @default(0)
   trialConsumed   Boolean   @default(false)
   legalAcceptedAt DateTime?
   referralCode     String?  @unique
@@ -152,10 +155,19 @@ model PlanConfig {
   isActive    Boolean  @default(true)
   features    String[]
   sortOrder   Int      @default(0)
+  // Free days a referrer earns when a referred user buys this plan (0 = none).
+  referralBonusDays Int @default(0)
+  // Private/special plans are hidden from public pricing and can only be
+  // reached via their secret access link (accessToken). maxRedemptions caps
+  // how many distinct members may activate the plan (null = unlimited).
+  isPrivate      Boolean @default(false)
+  accessToken    String? @unique
+  maxRedemptions Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([isActive, sortOrder])
+  @@index([isPrivate, isActive])
 }
 
 model Analyst {
@@ -188,7 +200,7 @@ model TradeIndex {
 
 model Trade {
   id             String      @id @default(cuid())
-  analystId      String
+  analystId      String?
   indexId        String?
   instrument     String
   segment        String
@@ -208,7 +220,7 @@ model Trade {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  analyst Analyst       @relation(fields: [analystId], references: [id], onDelete: Restrict)
+  analyst Analyst?      @relation(fields: [analystId], references: [id], onDelete: SetNull)
   index   TradeIndex?   @relation(fields: [indexId], references: [id], onDelete: SetNull)
   updates TradeUpdate[]
 
@@ -231,7 +243,7 @@ model TradeUpdate {
 
 model MarketOutlook {
   id                     String   @id @default(cuid())
-  analystId              String
+  analystId              String?
   date                   DateTime
   nifty                  String
   bankNifty              String
@@ -241,7 +253,7 @@ model MarketOutlook {
   institutionalSentiment String
   createdAt              DateTime @default(now())
 
-  analyst Analyst @relation(fields: [analystId], references: [id], onDelete: Restrict)
+  analyst Analyst? @relation(fields: [analystId], references: [id], onDelete: SetNull)
 
   @@unique([date, analystId])
   @@index([date])
@@ -262,6 +274,9 @@ model Payment {
   planName          String?
   planType          SubscriptionPlanType?
   durationDays      Int?
+  // Referral bonus snapshotted from the plan at purchase, so the reward is
+  // locked to what the plan offered when bought (null for pre-migration rows).
+  referralBonusDays Int?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 

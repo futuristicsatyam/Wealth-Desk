@@ -20,7 +20,9 @@ export default async function BillingPage({
   const [selectedPlan, payments] = await Promise.all([
     planCode
       ? prisma.planConfig.findFirst({
-          where: { code: planCode.toUpperCase(), isActive: true, isTrial: false }
+          // Private/special plans can only be purchased via their access link,
+          // never through the generic ?plan= billing route.
+          where: { code: planCode.toUpperCase(), isActive: true, isTrial: false, isPrivate: false }
         })
       : Promise.resolve(null),
     prisma.payment.findMany({

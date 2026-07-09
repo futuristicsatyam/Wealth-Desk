@@ -38,19 +38,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
         if (!valid) return null;
 
-        return { id: user.id, name: user.name, email: user.email, role: user.role };
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          sessionVersion: user.sessionVersion
+        };
       }
     })
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) token.role = (user as { role?: string }).role;
+      if (user) {
+        token.role = (user as { role?: string }).role;
+        token.sessionVersion = (user as { sessionVersion?: number }).sessionVersion ?? 0;
+      }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.sub ?? "";
         session.user.role = (token.role as string) ?? "USER";
+        // Default to 0 so pre-existing tokens (issued before this field) match
+        // a freshly-migrated user's default 0 and are NOT force-logged-out.
+        session.user.sessionVersion = (token.sessionVersion as number | undefined) ?? 0;
       }
       return session;
     }

@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     action: "TRIAL_ACTIVATED",
     entity: "Subscription",
     entityId: user.id,
-    summary: `${user.name} activated the 5-day trial`,
+    summary: `${user.name} activated the trial`,
     ipAddress: ip
   });
 

@@ -2,15 +2,15 @@
   "name": "wealth-research-desk-v2-root",
   "private": true,
   "scripts": {
-    "dev": "pnpm --dir wealth-research-desk dev",
-    "build": "pnpm --dir wealth-research-desk build",
-    "start": "pnpm --dir wealth-research-desk start",
-    "lint": "pnpm --dir wealth-research-desk lint",
-    "typecheck": "pnpm --dir wealth-research-desk typecheck",
-    "prisma:generate": "pnpm --dir wealth-research-desk prisma:generate",
-    "prisma:push": "pnpm --dir wealth-research-desk prisma:push",
-    "prisma:migrate": "pnpm --dir wealth-research-desk prisma:migrate",
-    "prisma:seed": "pnpm --dir wealth-research-desk prisma:seed",
-    "install:app": "pnpm --dir wealth-research-desk install"
+    "dev": "npm --prefix wealth-research-desk run dev",
+    "build": "npm --prefix wealth-research-desk run build",
+    "start": "npm --prefix wealth-research-desk run start",
+    "lint": "npm --prefix wealth-research-desk run lint",
+    "typecheck": "npm --prefix wealth-research-desk run typecheck",
+    "prisma:generate": "npm --prefix wealth-research-desk run prisma:generate",
+    "prisma:push": "npm --prefix wealth-research-desk run prisma:push",
+    "prisma:migrate": "npm --prefix wealth-research-desk run prisma:migrate",
+    "prisma:seed": "npm --prefix wealth-research-desk run prisma:seed",
+    "install:app": "npm --prefix wealth-research-desk install"
   }
 }

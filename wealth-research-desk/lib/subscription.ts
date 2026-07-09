@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import type { Prisma, SubscriptionPlanType } from "@prisma/client";
+import type { SubscriptionPlanType, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { referralBonusDaysForPlan, referralBonusLabel } from "@/lib/referral";
 
@@ -12,6 +12,41 @@ export type Entitlement = {
   /** True when the user may only see trades flagged isTrialVisible. */
   trialVisibleOnly: boolean;
 };
+
+/** True when a stored-ACTIVE subscription's paid period has already lapsed. */
+export function isSubscriptionExpired(sub: { status: SubscriptionStatus; endDate: Date }): boolean {
+  return sub.status === "ACTIVE" && sub.endDate.getTime() < Date.now();
+}
+
+/**
+ * The status to DISPLAY for a subscription, accounting for ACTIVE rows whose
+ * period has ended but whose stored status hasn't been flipped yet.
+ */
+export function displaySubscriptionStatus(sub: {
+  status: SubscriptionStatus;
+  endDate: Date;
+}): SubscriptionStatus {
+  return isSubscriptionExpired(sub) ? "EXPIRED" : sub.status;
+}
+
+/**
+ * Lazily flips ACTIVE subscriptions whose period has ended to EXPIRED.
+ * There is no scheduled job, so this self-heals the persisted status on read
+ * from the pages that display or count subscriptions. Idempotent and cheap —
+ * the `endDate` column is indexed and only overdue rows are touched.
+ * Pass `userId` to scope to a single member.
+ */
+export async function expireOverdueSubscriptions(userId?: string): Promise<number> {
+  const result = await prisma.subscription.updateMany({
+    where: {
+      status: "ACTIVE",
+      endDate: { lt: new Date() },
+      ...(userId ? { userId } : {})
+    },
+    data: { status: "EXPIRED", autoRenew: false }
+  });
+  return result.count;
+}
 
 /** Resolves what content a user is entitled to right now. */
 export async function getEntitlement(userId: string): Promise<Entitlement> {
@@ -33,6 +68,28 @@ export async function getEntitlement(userId: string): Promise<Entitlement> {
     endDate: subscription.endDate,
     trialVisibleOnly: isTrial
   };
+}
+
+/**
+ * Number of DISTINCT members who have redeemed a plan (captured a payment for
+ * it, including free ₹0 activations recorded as captured payments). Used to
+ * enforce a private plan's maxRedemptions cap.
+ */
+export async function countPlanRedemptions(planCode: string): Promise<number> {
+  const rows = await prisma.payment.groupBy({
+    by: ["userId"],
+    where: { planCode, status: "CAPTURED" }
+  });
+  return rows.length;
+}
+
+/** True if the user already holds a live subscription for this exact plan. */
+export async function hasActivePlan(userId: string, planCode: string): Promise<boolean> {
+  const sub = await prisma.subscription.findFirst({
+    where: { userId, planCode, status: "ACTIVE", endDate: { gte: new Date() } },
+    select: { id: true }
+  });
+  return Boolean(sub);
 }
 
 /** Maps a duration to a plan-type enum. */
@@ -63,7 +120,7 @@ export async function grantSubscriptionFromPayment(params: {
   razorpayPaymentId: string;
   razorpaySignature?: string;
 }): Promise<{ granted: boolean; reason?: string }> {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  return prisma.$transaction(async (tx) => {
     const payment = await tx.payment.findUnique({ where: { id: params.paymentId } });
     if (!payment) return { granted: false, reason: "payment_not_found" };
     if (!payment.razorpayOrderId) return { granted: false, reason: "missing_order" };
@@ -130,7 +187,9 @@ export async function grantSubscriptionFromPayment(params: {
     });
 
     if (referredUser?.referredByUserId && planType !== "TRIAL") {
-      const bonusDays = referralBonusDaysForPlan(planType);
+      // Prefer the bonus snapshotted on the payment (per-plan, configured by
+      // admin); fall back to the legacy enum mapping for pre-migration rows.
+      const bonusDays = payment.referralBonusDays ?? referralBonusDaysForPlan(planType);
 
       if (bonusDays > 0) {
         const existingReward = await tx.referralReward.findUnique({

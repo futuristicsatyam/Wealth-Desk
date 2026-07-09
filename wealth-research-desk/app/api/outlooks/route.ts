@@ -37,7 +37,7 @@ export async function GET() {
       globalCues: o.globalCues,
       sectorStrength: o.sectorStrength,
       institutionalSentiment: o.institutionalSentiment,
-      analystName: o.analyst.name
+      analystName: o.analyst?.name ?? "Research Desk"
     }))
   });
 }

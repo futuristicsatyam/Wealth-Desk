@@ -28,15 +28,6 @@ export function TradeForm({
     if (state.status === "success") formRef.current?.reset();
   }, [state.status]);
 
-  if (analysts.length === 0) {
-    return (
-      <InlineToast
-        tone="error"
-        message="Add an active analyst before publishing trades - trades must be attributed correctly."
-      />
-    );
-  }
-
   if (indexes.length === 0) {
     return <InlineToast tone="error" message="Add at least one index before publishing trades." />;
   }
@@ -48,8 +39,9 @@ export function TradeForm({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <Label htmlFor="analystId">Attributed analyst</Label>
-          <Select id="analystId" name="analystId" required>
+          <Label htmlFor="analystId">Attributed analyst (optional)</Label>
+          <Select id="analystId" name="analystId" defaultValue="">
+            <option value="">Unattributed</option>
             {analysts.map((analyst) => (
               <option key={analyst.id} value={analyst.id}>
                 {analyst.name}

@@ -23,12 +23,18 @@ type PlanOption = { code: string; name: string; amountPaise: number; durationDay
 
 export function BillingCheckout({
   plan,
-  paymentsConfigured
+  paymentsConfigured,
+  accessToken,
+  successHref = "/dashboard/subscription"
 }: {
   plan: PlanOption | null;
   paymentsConfigured: boolean;
+  /** Present for private/special plans — forwarded to the server for gating. */
+  accessToken?: string;
+  successHref?: string;
 }) {
   const router = useRouter();
+  const isFree = Boolean(plan && plan.amountPaise <= 0);
   const [scriptReady, setScriptReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(
@@ -36,6 +42,8 @@ export function BillingCheckout({
   );
 
   useEffect(() => {
+    // Free plans skip Razorpay entirely, so don't bother loading the gateway.
+    if (isFree) return;
     if (document.getElementById("razorpay-checkout")) {
       setScriptReady(true);
       return;
@@ -46,7 +54,32 @@ export function BillingCheckout({
     script.onload = () => setScriptReady(true);
     script.onerror = () => setToast({ tone: "error", message: "Could not load the payment gateway." });
     document.body.appendChild(script);
-  }, []);
+  }, [isFree]);
+
+  async function activateFree() {
+    if (!plan || !accessToken) return;
+    setBusy(true);
+    setToast(null);
+    try {
+      const res = await fetch("/api/plans/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ tone: "success", message: "Plan activated. Redirecting..." });
+        router.push(successHref);
+        router.refresh();
+      } else {
+        setToast({ tone: "error", message: data.message ?? "Could not activate the plan" });
+        setBusy(false);
+      }
+    } catch {
+      setToast({ tone: "error", message: "Network error - please retry" });
+      setBusy(false);
+    }
+  }
 
   if (!plan) {
     return (
@@ -66,7 +99,7 @@ export function BillingCheckout({
       const orderResponse = await fetch("/api/subscriptions/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planCode: plan.code })
+        body: JSON.stringify({ planCode: plan.code, accessToken })
       });
       const orderData = await orderResponse.json();
       if (!orderResponse.ok) {
@@ -104,7 +137,7 @@ export function BillingCheckout({
           const verifyData = await verifyResponse.json();
           if (verifyResponse.ok) {
             setToast({ tone: "success", message: "Subscription activated. Redirecting..." });
-            router.push("/dashboard/subscription");
+            router.push(successHref);
             router.refresh();
           } else {
             setToast({
@@ -130,19 +163,31 @@ export function BillingCheckout({
         <p className="text-xs uppercase tracking-wider text-accent">Selected plan</p>
         <p className="mt-1 text-xl font-semibold">{plan.name}</p>
         <p className="text-sm text-muted">
-          {formatInr(plan.amountPaise)} &middot; {plan.durationDays} days &middot; incl. GST invoice
+          {isFree ? "Free" : formatInr(plan.amountPaise)} &middot; {plan.durationDays} days
+          {isFree ? "" : " · incl. GST invoice"}
         </p>
       </div>
-      {!paymentsConfigured ? (
+      {isFree ? (
+        <>
+          <Button onClick={activateFree} disabled={busy} className="w-full">
+            {busy ? "Activating..." : "Activate free access"}
+          </Button>
+          <p className="text-xs text-muted">
+            This is a complimentary plan — no payment is required.
+          </p>
+        </>
+      ) : !paymentsConfigured ? (
         <InlineToast tone="error" message="Online payments are not configured. Contact support." />
       ) : (
-        <Button onClick={startCheckout} disabled={busy || !scriptReady} className="w-full">
-          {busy ? "Processing..." : `Pay ${formatInr(plan.amountPaise)} securely`}
-        </Button>
+        <>
+          <Button onClick={startCheckout} disabled={busy || !scriptReady} className="w-full">
+            {busy ? "Processing..." : `Pay ${formatInr(plan.amountPaise)} securely`}
+          </Button>
+          <p className="text-xs text-muted">
+            Payments are processed by Razorpay. We never see or store your card details.
+          </p>
+        </>
       )}
-      <p className="text-xs text-muted">
-        Payments are processed by Razorpay. We never see or store your card details.
-      </p>
     </Card>
   );
 }

@@ -9,7 +9,7 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { LEGAL_DOCS, LEGAL_SLUGS } from "../lib/legal";
+import { buildLegalDocs, LEGAL_SLUGS } from "../lib/legal";
 import { encryptPii, blindIndex } from "../lib/pii";
 
 const prisma = new PrismaClient();
@@ -128,6 +128,7 @@ async function main() {
       amountPaise: 0,
       durationDays: 5,
       isTrial: true,
+      referralBonusDays: 0,
       features: ["Curated sample of live trades", "Daily market outlook", "Dashboard notifications"],
       sortOrder: 0
     },
@@ -138,6 +139,7 @@ async function main() {
       amountPaise: 249900,
       durationDays: 30,
       isTrial: false,
+      referralBonusDays: 5,
       features: [
         "All live trades with entries, stop-loss & targets",
         "Daily market outlook",
@@ -153,6 +155,7 @@ async function main() {
       amountPaise: 599900,
       durationDays: 90,
       isTrial: false,
+      referralBonusDays: 15,
       features: [
         "Everything in Monthly",
         "Priority support",
@@ -167,6 +170,7 @@ async function main() {
       amountPaise: 1999900,
       durationDays: 365,
       isTrial: false,
+      referralBonusDays: 30,
       features: [
         "Everything in Quarterly",
         "Dedicated relationship manager",
@@ -184,6 +188,7 @@ async function main() {
         description: plan.description,
         amountPaise: plan.amountPaise,
         durationDays: plan.durationDays,
+        referralBonusDays: plan.referralBonusDays,
         isTrial: plan.isTrial,
         features: plan.features,
         sortOrder: plan.sortOrder
@@ -334,8 +339,10 @@ async function main() {
   }
 
   // --- Legal content (ManagedContent overrides) -------------------------
+  const trialDays = plans.find((p) => p.isTrial)?.durationDays ?? 5;
+  const legalDocs = buildLegalDocs(trialDays);
   for (const slug of LEGAL_SLUGS) {
-    const doc = LEGAL_DOCS[slug];
+    const doc = legalDocs[slug];
     await prisma.managedContent.upsert({
       where: { slug: `legal:${slug}` },
       update: { title: doc.title, body: doc.body },
