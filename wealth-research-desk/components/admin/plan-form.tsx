@@ -19,6 +19,7 @@ export type EditablePlan = {
   amountPaise: number;
   durationDays: number;
   referralBonusDays: number;
+  telegramAlerts: boolean;
   isTrial: boolean;
   isActive: boolean;
   features: string[];
@@ -159,6 +160,26 @@ export function PlanForm({ plan }: { plan?: EditablePlan }) {
           defaultValue={plan?.features.join("\n")}
           required
         />
+      </div>
+
+      {/* Special perk: Telegram trade alerts */}
+      <div className="rounded-lg border border-border bg-surface p-3">
+        <label className="flex items-start gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            name="telegramAlerts"
+            value="true"
+            defaultChecked={plan?.telegramAlerts ?? false}
+            className="mt-0.5 h-4 w-4 accent-[rgb(var(--accent))]"
+          />
+          <span>
+            <span className="font-medium">Telegram trade alerts</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Members on this plan get new-trade alerts as Telegram DMs (a special perk). Every active
+              member still receives the in-dashboard notification regardless of this setting.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Private / special plan controls */}

@@ -129,6 +129,7 @@ async function main() {
       durationDays: 5,
       isTrial: true,
       referralBonusDays: 0,
+      telegramAlerts: false,
       features: ["Curated sample of live trades", "Daily market outlook", "Dashboard notifications"],
       sortOrder: 0
     },
@@ -140,11 +141,12 @@ async function main() {
       durationDays: 30,
       isTrial: false,
       referralBonusDays: 5,
+      telegramAlerts: false,
       features: [
         "All live trades with entries, stop-loss & targets",
         "Daily market outlook",
         "Trade history & performance",
-        "Email & Telegram alerts"
+        "Dashboard alerts"
       ],
       sortOrder: 1
     },
@@ -156,8 +158,10 @@ async function main() {
       durationDays: 90,
       isTrial: false,
       referralBonusDays: 15,
+      telegramAlerts: true,
       features: [
         "Everything in Monthly",
+        "Instant Telegram trade alerts",
         "Priority support",
         "Quarterly strategy review note"
       ],
@@ -171,8 +175,10 @@ async function main() {
       durationDays: 365,
       isTrial: false,
       referralBonusDays: 30,
+      telegramAlerts: true,
       features: [
         "Everything in Quarterly",
+        "Instant Telegram trade alerts",
         "Dedicated relationship manager",
         "Early access to new research formats"
       ],
@@ -189,6 +195,7 @@ async function main() {
         amountPaise: plan.amountPaise,
         durationDays: plan.durationDays,
         referralBonusDays: plan.referralBonusDays,
+        telegramAlerts: plan.telegramAlerts,
         isTrial: plan.isTrial,
         features: plan.features,
         sortOrder: plan.sortOrder

@@ -85,6 +85,12 @@ model User {
   sessionVersion  Int       @default(0)
   trialConsumed   Boolean   @default(false)
   legalAcceptedAt DateTime?
+  // Telegram DM alerts: chatId is set once the member links their account to
+  // the bot (via /start <linkToken>). linkToken is a short-lived, one-time
+  // secret embedded in the connect deep-link; cleared once the chat is bound.
+  telegramChatId    String?   @unique
+  telegramLinkedAt  DateTime?
+  telegramLinkToken String?   @unique
   referralCode     String?  @unique
   referredByUserId String?
   createdAt       DateTime  @default(now())
@@ -157,6 +163,9 @@ model PlanConfig {
   sortOrder   Int      @default(0)
   // Free days a referrer earns when a referred user buys this plan (0 = none).
   referralBonusDays Int @default(0)
+  // Special perk: members on this plan receive new-trade alerts as Telegram DMs
+  // (in addition to the dashboard notification every active member gets).
+  telegramAlerts Boolean @default(false)
   // Private/special plans are hidden from public pricing and can only be
   // reached via their secret access link (accessToken). maxRedemptions caps
   // how many distinct members may activate the plan (null = unlimited).

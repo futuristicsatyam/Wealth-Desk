@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
 import { publishUserNotification } from "@/lib/live-notify";
-import { broadcastNotification, notifyTradeUpdate } from "@/lib/notifications";
+import { broadcastNotification, notifyTradeUpdate, notifyNewTrade } from "@/lib/notifications";
 import {
   tradeInputSchema,
   tradeStatusSchema,
@@ -111,7 +111,28 @@ export async function createTradeAction(_prev: ActionState, formData: FormData):
     ipAddress: await clientIp()
   });
 
+  // Fan out: dashboard notification to every active member + Telegram DM to
+  // members on a telegram-enabled plan. Never let a delivery hiccup fail the
+  // publish — the trade is already saved.
+  try {
+    await notifyNewTrade({
+      tradeId: trade.id,
+      instrument: parsed.data.instrument,
+      segment: parsed.data.segment,
+      tradeType: parsed.data.tradeType,
+      entry: parsed.data.entryPrice,
+      stopLoss: parsed.data.stopLoss,
+      target1: parsed.data.target1,
+      target2: parsed.data.target2,
+      target3: parsed.data.target3 ?? null,
+      isTrialVisible: parsed.data.isTrialVisible
+    });
+  } catch (error) {
+    console.error("[createTradeAction] notifyNewTrade failed", error);
+  }
+
   revalidatePath("/admin/trades");
+  revalidatePath("/dashboard/notifications");
   return { status: "success", message: `Trade for ${parsed.data.instrument} published` };
 }
 
@@ -390,6 +411,7 @@ export async function createPlanAction(_prev: ActionState, formData: FormData): 
     amountRupees: num(formData.get("amountRupees")),
     durationDays: num(formData.get("durationDays")),
     referralBonusDays: num(formData.get("referralBonusDays")) || 0,
+    telegramAlerts: formData.get("telegramAlerts") === "true",
     features,
     sortOrder: num(formData.get("sortOrder")) || 0,
     isActive: formData.get("isActive") !== "false",
@@ -407,6 +429,7 @@ export async function createPlanAction(_prev: ActionState, formData: FormData): 
         amountPaise: parsed.data.amountRupees * 100,
         durationDays: parsed.data.durationDays,
         referralBonusDays: parsed.data.referralBonusDays,
+        telegramAlerts: parsed.data.telegramAlerts,
         isTrial: parsed.data.planType === "TRIAL",
         isActive: parsed.data.isActive,
         features: parsed.data.features,
@@ -464,6 +487,7 @@ export async function updatePlanAction(_prev: ActionState, formData: FormData): 
     amountRupees: num(formData.get("amountRupees")),
     durationDays: num(formData.get("durationDays")),
     referralBonusDays: num(formData.get("referralBonusDays")) || 0,
+    telegramAlerts: formData.get("telegramAlerts") === "true",
     features,
     sortOrder: num(formData.get("sortOrder")) || 0,
     // Preserve the current visibility (managed via the Show/Hide toggle).
@@ -496,6 +520,7 @@ export async function updatePlanAction(_prev: ActionState, formData: FormData): 
         amountPaise: parsed.data.amountRupees * 100,
         durationDays: parsed.data.durationDays,
         referralBonusDays: parsed.data.referralBonusDays,
+        telegramAlerts: parsed.data.telegramAlerts,
         isTrial: parsed.data.planType === "TRIAL",
         isActive: parsed.data.isActive,
         features: parsed.data.features,

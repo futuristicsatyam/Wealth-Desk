@@ -149,6 +149,8 @@ export const planSchema = z
     durationDays: z.number().int().min(1).max(400),
     // Free days a referrer earns when someone buys this plan (0 = none).
     referralBonusDays: z.number().int().min(0).max(400).default(0),
+    // Special perk: members on this plan get new-trade alerts via Telegram DM.
+    telegramAlerts: z.boolean().default(false),
     features: z.array(z.string().trim().min(1)).max(12),
     sortOrder: z.number().int().min(0).default(0),
     isActive: z.boolean().default(true),

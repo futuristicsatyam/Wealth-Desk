@@ -6,6 +6,8 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/format";
 import { markAllNotificationsReadAction } from "@/app/dashboard/actions";
+import { TelegramConnect } from "@/components/dashboard/telegram-connect";
+import { telegramBotUsername } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,35 @@ export default async function NotificationsPage() {
   });
   const unread = notifications.filter((n) => !n.isRead).length;
 
+  // Telegram perk: only surface the connect card to members whose active plan
+  // enables it, and only when the bot is actually configured.
+  let showTelegram = false;
+  let telegramLinked = false;
+  if (telegramBotUsername()) {
+    const now = new Date();
+    const telegramPlans = await prisma.planConfig.findMany({
+      where: { telegramAlerts: true },
+      select: { code: true }
+    });
+    const eligibleCodes = telegramPlans.map((plan) => plan.code);
+    if (eligibleCodes.length > 0) {
+      const [eligibleSub, dbUser] = await Promise.all([
+        prisma.subscription.findFirst({
+          where: {
+            userId: user.id,
+            status: "ACTIVE",
+            endDate: { gte: now },
+            planCode: { in: eligibleCodes }
+          },
+          select: { id: true }
+        }),
+        prisma.user.findUnique({ where: { id: user.id }, select: { telegramChatId: true } })
+      ]);
+      showTelegram = Boolean(eligibleSub);
+      telegramLinked = Boolean(dbUser?.telegramChatId);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -42,6 +73,8 @@ export default async function NotificationsPage() {
           </form>
         )}
       </div>
+
+      {showTelegram && <TelegramConnect linked={telegramLinked} />}
 
       {notifications.length === 0 ? (
         <EmptyState title="No notifications" hint="Trade updates and alerts will appear here." />

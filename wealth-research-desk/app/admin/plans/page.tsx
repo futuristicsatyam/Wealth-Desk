@@ -61,6 +61,7 @@ export default async function AdminPlansPage() {
                         <p className="text-sm font-medium">{plan.name}</p>
                         <Badge tone="neutral">{plan.code}</Badge>
                         {plan.isTrial && <Badge tone="accent">Trial</Badge>}
+                        {plan.telegramAlerts && <Badge tone="accent">Telegram</Badge>}
                         {plan.isPrivate && <Badge tone="warning">Private</Badge>}
                         {plan.isPrivate && plan.amountPaise <= 0 && <Badge tone="success">Free</Badge>}
                         <Badge tone={plan.isActive ? "success" : "neutral"}>
@@ -108,6 +109,7 @@ export default async function AdminPlansPage() {
                           amountPaise: plan.amountPaise,
                           durationDays: plan.durationDays,
                           referralBonusDays: plan.referralBonusDays,
+                          telegramAlerts: plan.telegramAlerts,
                           isTrial: plan.isTrial,
                           isActive: plan.isActive,
                           features: plan.features,
