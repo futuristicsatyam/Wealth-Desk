@@ -68,6 +68,17 @@ enum DiscountType {
   FLAT
 }
 
+enum OutboundChannel {
+  TELEGRAM
+  EMAIL
+}
+
+enum OutboundStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 model User {
   id              String    @id @default(cuid())
   name            String
@@ -414,6 +425,25 @@ model RateLimit {
   createdAt DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+// Durable outbox for slow, rate-limited external sends (Telegram DMs, per-member
+// email). Publishing enqueues rows; a cron dispatcher drains them. This keeps the
+// user-facing request instant and lets fan-out scale to thousands of recipients.
+model OutboundMessage {
+  id        String          @id @default(cuid())
+  channel   OutboundChannel
+  target    String // Telegram chatId, or email address
+  title     String
+  body      String
+  status    OutboundStatus  @default(PENDING)
+  attempts  Int             @default(0)
+  lastError String?
+  batchId   String?
+  createdAt DateTime        @default(now())
+  sentAt    DateTime?
+
+  @@index([status, createdAt])
 }
 
 model Coupon {

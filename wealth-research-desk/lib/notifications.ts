@@ -1,14 +1,17 @@
 import crypto from "crypto";
 import type { TradeStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { publishUserNotification } from "@/lib/live-notify";
-import { sendBulkEmail, emailLayout } from "@/lib/email";
-import { sendTelegramMessage, sendTelegramDirectBulk } from "@/lib/telegram";
-import { escapeHtml } from "@/lib/html";
+import { sendTelegramMessage } from "@/lib/telegram";
+import { enqueueOutbound } from "@/lib/outbound";
 
 type Channel = "DASHBOARD" | "EMAIL" | "TELEGRAM";
 
-/** Creates DASHBOARD notifications for a set of users and pushes them live. */
+/**
+ * Creates DASHBOARD notifications for a set of users in a single bulk insert.
+ * Delivery to the client is by polling (/api/notifications/live), so there is
+ * no per-user connection or in-process fan-out to maintain — this scales to
+ * large recipient counts as one write.
+ */
 async function createDashboardNotifications(
   userIds: string[],
   payload: { title: string; body: string; eventType: string; audience: string }
@@ -26,19 +29,6 @@ async function createDashboardNotifications(
       batchId
     }))
   });
-
-  const created = await prisma.notification.findMany({
-    where: { batchId },
-    select: { id: true, userId: true, title: true, body: true, createdAt: true }
-  });
-  for (const notification of created) {
-    publishUserNotification(notification.userId, {
-      id: notification.id,
-      title: notification.title,
-      body: notification.body,
-      createdAt: notification.createdAt.toISOString()
-    });
-  }
 }
 
 function prettyTradeStatus(status: TradeStatus): string {
@@ -56,7 +46,7 @@ export async function broadcastNotification(params: {
   eventType: string;
   audience: "all" | "active_subscribers";
   channels: Channel[];
-}): Promise<{ recipients: number; telegram: "sent" | "skipped" | "not_selected"; emailsSent: number }> {
+}): Promise<{ recipients: number; telegram: "sent" | "skipped" | "not_selected"; emailsQueued: number }> {
   const recipients = await prisma.user.findMany({
     where:
       params.audience === "active_subscribers"
@@ -82,42 +72,33 @@ export async function broadcastNotification(params: {
         batchId
       }))
     });
-
-    const created = await prisma.notification.findMany({
-      where: { batchId },
-      select: { id: true, userId: true, title: true, body: true, createdAt: true }
-    });
-    for (const notification of created) {
-      publishUserNotification(notification.userId, {
-        id: notification.id,
-        title: notification.title,
-        body: notification.body,
-        createdAt: notification.createdAt.toISOString()
-      });
-    }
   }
 
+  // The Telegram broadcast is a single post to the configured channel, so it's
+  // cheap to send inline. Per-recipient email, however, is queued to the outbox
+  // and delivered by the cron dispatcher — never blocking this request even for
+  // thousands of recipients.
   let telegram: "sent" | "skipped" | "not_selected" = "not_selected";
   if (params.channels.includes("TELEGRAM")) {
     const result = await sendTelegramMessage({ title: params.title, body: params.body });
     telegram = result.sent ? "sent" : "skipped";
   }
 
-  let emailsSent = 0;
+  let emailsQueued = 0;
   if (params.channels.includes("EMAIL") && recipients.length > 0) {
-    const html = emailLayout(
-      params.title,
-      `<p style="white-space:pre-wrap">${escapeHtml(params.body)}</p>`
+    await enqueueOutbound(
+      recipients.map((user) => ({
+        channel: "EMAIL" as const,
+        target: user.email,
+        title: params.title,
+        body: params.body,
+        batchId
+      }))
     );
-    const result = await sendBulkEmail(
-      recipients.map((u) => u.email),
-      params.title,
-      html
-    );
-    emailsSent = result.sent;
+    emailsQueued = recipients.length;
   }
 
-  return { recipients: recipients.length, telegram, emailsSent };
+  return { recipients: recipients.length, telegram, emailsQueued };
 }
 
 /** Creates dashboard notifications for members when an active trade is updated. */
@@ -146,31 +127,12 @@ export async function notifyTradeUpdate(params: {
     return { recipients: 0 };
   }
 
-  const batchId = crypto.randomUUID();
-  await prisma.notification.createMany({
-    data: eligibleUserIds.map((userId) => ({
-      userId,
-      title: `Trade update: ${params.instrument}`,
-      body: `${params.message} (Status: ${prettyTradeStatus(params.status)})`,
-      channel: "DASHBOARD" as const,
-      eventType: "TRADE_UPDATE",
-      audience: "active_subscribers",
-      batchId
-    }))
+  await createDashboardNotifications(eligibleUserIds, {
+    title: `Trade update: ${params.instrument}`,
+    body: `${params.message} (Status: ${prettyTradeStatus(params.status)})`,
+    eventType: "TRADE_UPDATE",
+    audience: "active_subscribers"
   });
-
-  const created = await prisma.notification.findMany({
-    where: { batchId },
-    select: { id: true, userId: true, title: true, body: true, createdAt: true }
-  });
-  for (const notification of created) {
-    publishUserNotification(notification.userId, {
-      id: notification.id,
-      title: notification.title,
-      body: notification.body,
-      createdAt: notification.createdAt.toISOString()
-    });
-  }
 
   return { recipients: eligibleUserIds.length };
 }
@@ -194,7 +156,7 @@ export async function notifyNewTrade(params: {
   target2: number;
   target3?: number | null;
   isTrialVisible: boolean;
-}): Promise<{ dashboardRecipients: number; telegramSent: number }> {
+}): Promise<{ dashboardRecipients: number; telegramQueued: number }> {
   const now = new Date();
 
   // --- Dashboard: all active members (trial only if the trade is visible) ---
@@ -223,7 +185,7 @@ export async function notifyNewTrade(params: {
   });
   const eligibleCodes = telegramPlans.map((plan) => plan.code);
 
-  let telegramSent = 0;
+  let telegramQueued = 0;
   if (eligibleCodes.length > 0) {
     const linkedMembers = await prisma.user.findMany({
       where: {
@@ -253,20 +215,17 @@ export async function notifyNewTrade(params: {
         "",
         "Full rationale on your dashboard."
       ];
-      const result = await sendTelegramDirectBulk(chatIds, {
-        title: `📈 New trade: ${params.instrument}`,
-        body: lines.join("\n")
-      });
-      telegramSent = result.sent;
-
-      if (result.blockedChatIds.length > 0) {
-        await prisma.user.updateMany({
-          where: { telegramChatId: { in: result.blockedChatIds } },
-          data: { telegramChatId: null, telegramLinkedAt: null }
-        });
-      }
+      const title = `📈 New trade: ${params.instrument}`;
+      const body = lines.join("\n");
+      // Queue one outbound row per member. The cron dispatcher sends them (and
+      // unlinks anyone who has blocked the bot), so a publish never blocks on
+      // hundreds of rate-limited Telegram calls or risks a function timeout.
+      await enqueueOutbound(
+        chatIds.map((chatId) => ({ channel: "TELEGRAM" as const, target: chatId, title, body }))
+      );
+      telegramQueued = chatIds.length;
     }
   }
 
-  return { dashboardRecipients: dashboardUserIds.length, telegramSent };
+  return { dashboardRecipients: dashboardUserIds.length, telegramQueued };
 }

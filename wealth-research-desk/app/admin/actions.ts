@@ -8,8 +8,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
-import { publishUserNotification } from "@/lib/live-notify";
+import { after } from "next/server";
 import { broadcastNotification, notifyTradeUpdate, notifyNewTrade } from "@/lib/notifications";
+import { drainOutbound } from "@/lib/outbound";
 import {
   tradeInputSchema,
   tradeStatusSchema,
@@ -131,6 +132,11 @@ export async function createTradeAction(_prev: ActionState, formData: FormData):
   } catch (error) {
     console.error("[createTradeAction] notifyNewTrade failed", error);
   }
+
+  // Kick an immediate best-effort drain of the outbox after the response is
+  // sent, so linked members get their Telegram DM within seconds; the cron
+  // dispatcher is the safety net for anything not sent here.
+  after(() => drainOutbound().catch(() => {}));
 
   revalidatePath("/admin/trades");
   revalidatePath("/dashboard/notifications");
@@ -722,14 +728,17 @@ export async function broadcastNotificationAction(
     entity: "Notification",
     entityId: "broadcast",
     summary: `Broadcast "${parsed.data.title}" to ${result.recipients} members`,
-    metadata: { channels: parsed.data.channels, emailsSent: result.emailsSent },
+    metadata: { channels: parsed.data.channels, emailsQueued: result.emailsQueued },
     ipAddress: await clientIp()
   });
+
+  // Send queued emails promptly without blocking the response; cron backstops.
+  if (result.emailsQueued > 0) after(() => drainOutbound().catch(() => {}));
 
   revalidatePath("/admin/notifications");
   return {
     status: "success",
-    message: `Broadcast sent to ${result.recipients} members (emails: ${result.emailsSent}, telegram: ${result.telegram}).`
+    message: `Broadcast sent to ${result.recipients} members (emails queued: ${result.emailsQueued}, telegram: ${result.telegram}).`
   };
 }
 
@@ -792,7 +801,9 @@ export async function resolveSupportTicketAction(formData: FormData): Promise<vo
   });
 
   if (statusChanged || responseChanged) {
-    const notification = await prisma.notification.create({
+    // The member picks this up on their next notification poll — no in-process
+    // push needed.
+    await prisma.notification.create({
       data: {
         userId: existingTicket.userId,
         title: `Support update: ${existingTicket.subject}`,
@@ -803,13 +814,6 @@ export async function resolveSupportTicketAction(formData: FormData): Promise<vo
         eventType: "SUPPORT_TICKET_UPDATED",
         audience: "self"
       }
-    });
-
-    publishUserNotification(existingTicket.userId, {
-      id: notification.id,
-      title: notification.title,
-      body: notification.body,
-      createdAt: notification.createdAt.toISOString()
     });
   }
 

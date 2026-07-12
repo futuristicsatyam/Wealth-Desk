@@ -13,15 +13,17 @@ type LiveNotification = {
 };
 
 const POPUP_LIFETIME_MS = 7000;
-const POLL_BASE_MS = 5000;
+// Polling cadence. A stateless poll against an indexed query scales linearly and
+// works across every serverless instance — unlike a long-lived SSE connection,
+// which pins one function invocation per active user and can't fan out across
+// instances. Base 15s keeps steady-state load low at high concurrency; on any
+// failure we back off to 60s instead of hammering the DB pool.
+const POLL_BASE_MS = 15000;
 const POLL_MAX_MS = 60000;
-const RECONNECT_BASE_MS = 2000;
-const RECONNECT_MAX_MS = 30000;
 
 export function LiveNotifications() {
   const router = useRouter();
   const [popups, setPopups] = useState<LiveNotification[]>([]);
-  const reconnectTimerRef = useRef<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
   const lastSeenRef = useRef<string>(new Date().toISOString());
@@ -29,7 +31,6 @@ export function LiveNotifications() {
 
   useEffect(() => {
     let alive = true;
-    let eventSource: EventSource | null = null;
 
     // Coalesce bursts of notifications into at most one server refresh per second.
     const scheduleRefresh = () => {
@@ -42,7 +43,9 @@ export function LiveNotifications() {
 
     const playSound = () => {
       if (typeof window === "undefined") return;
-      const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
 
       try {
@@ -91,21 +94,18 @@ export function LiveNotifications() {
     };
 
     let pollDelay = POLL_BASE_MS;
-    let reconnectAttempts = 0;
 
     // Self-scheduling poll with exponential backoff. On any failure (API/DB slow
     // or down) the interval doubles up to POLL_MAX_MS instead of hammering the
-    // server every few seconds and exhausting the DB connection pool; a success
-    // resets it to the base interval.
+    // server; a success resets it to the base interval.
     const runPoll = async () => {
       if (!alive) return;
       let ok = false;
       try {
-        const response = await fetch(`/api/notifications/live?after=${encodeURIComponent(lastSeenRef.current)}`, {
-          method: "GET",
-          cache: "no-store",
-          credentials: "same-origin"
-        });
+        const response = await fetch(
+          `/api/notifications/live?after=${encodeURIComponent(lastSeenRef.current)}`,
+          { method: "GET", cache: "no-store", credentials: "same-origin" }
+        );
         if (response.ok) {
           ok = true;
           const payload = (await response.json()) as { notifications?: LiveNotification[] };
@@ -121,54 +121,12 @@ export function LiveNotifications() {
       if (alive) pollTimerRef.current = window.setTimeout(runPoll, pollDelay);
     };
 
-    const connect = () => {
-      if (!alive) return;
-
-      eventSource = new EventSource("/api/notifications/stream");
-
-      const onNotification = (event: MessageEvent<string>) => {
-        try {
-          const notification = JSON.parse(event.data) as LiveNotification;
-          if (!notification?.id) return;
-          pushPopup(notification);
-        } catch {
-          // Ignore malformed event payloads.
-        }
-      };
-
-      // A live connection resets the reconnect backoff.
-      const onOpen = () => {
-        reconnectAttempts = 0;
-      };
-      eventSource.addEventListener("open", onOpen);
-      eventSource.addEventListener("connected", onOpen);
-      eventSource.addEventListener("notification", onNotification as EventListener);
-      eventSource.onerror = () => {
-        eventSource?.close();
-        if (!alive) return;
-        // Exponential backoff so a failing stream does not reconnect (and re-hit
-        // the DB via getApiUser) every couple of seconds.
-        const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** reconnectAttempts);
-        reconnectAttempts += 1;
-        reconnectTimerRef.current = window.setTimeout(connect, delay);
-      };
-    };
-
-    connect();
     pollTimerRef.current = window.setTimeout(runPoll, pollDelay);
 
     return () => {
       alive = false;
-      eventSource?.close();
-      if (reconnectTimerRef.current) {
-        window.clearTimeout(reconnectTimerRef.current);
-      }
-      if (pollTimerRef.current) {
-        window.clearTimeout(pollTimerRef.current);
-      }
-      if (refreshTimerRef.current) {
-        window.clearTimeout(refreshTimerRef.current);
-      }
+      if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current);
+      if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current);
     };
   }, [router]);
 
