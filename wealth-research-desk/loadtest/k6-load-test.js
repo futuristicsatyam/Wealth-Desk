@@ -30,50 +30,54 @@ import { Rate, Trend } from "k6/metrics";
 const BASE_URL = (__ENV.BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const SESSION_COOKIE = __ENV.SESSION_COOKIE || "";
 const PEAK_VUS = Number(__ENV.PEAK_VUS || 1000);
-const HOLD = __ENV.HOLD || "3m";
+const HOLD = __ENV.HOLD || "3m"; // time held at peak
+const RAMP = __ENV.RAMP || "1m"; // duration of each ramp-up segment
+const STEP = __ENV.STEP || "2m"; // time held at each intermediate level
+// Smoke test example: -e PEAK_VUS=40 -e RAMP=10s -e STEP=10s -e HOLD=20s
 
 // Custom metrics so you can read each concern separately in the summary.
 const pageErrors = new Rate("page_errors");
 const pollErrors = new Rate("poll_errors");
 const pollLatency = new Trend("poll_latency", true);
 
+const rampStages = (peak) => [
+  { duration: RAMP, target: Math.round(peak * 0.2) },
+  { duration: STEP, target: Math.round(peak * 0.2) },
+  { duration: RAMP, target: Math.round(peak * 0.5) },
+  { duration: STEP, target: Math.round(peak * 0.5) },
+  { duration: RAMP, target: peak },
+  { duration: HOLD, target: peak },
+  { duration: RAMP, target: 0 }
+];
+
+const scenarios = {
+  // Anonymous visitors browsing public, DB-backed pages.
+  browse: {
+    executor: "ramping-vus",
+    exec: "browse",
+    startVUs: 0,
+    stages: rampStages(PEAK_VUS),
+    gracefulRampDown: "30s"
+  }
+};
+
+// Logged-in members whose dashboard polls for notifications. Only registered
+// when SESSION_COOKIE is provided — otherwise the scenario would busy-loop
+// (poll() returns instantly with no request) and burn CPU for nothing.
+if (SESSION_COOKIE) {
+  scenarios.poll = {
+    executor: "ramping-vus",
+    exec: "poll",
+    startVUs: 0,
+    stages: rampStages(PEAK_VUS),
+    gracefulRampDown: "30s"
+  };
+}
+
 export const options = {
-  scenarios: {
-    // Anonymous visitors browsing public, DB-backed pages.
-    browse: {
-      executor: "ramping-vus",
-      exec: "browse",
-      startVUs: 0,
-      stages: [
-        { duration: "1m", target: Math.round(PEAK_VUS * 0.2) },
-        { duration: "2m", target: Math.round(PEAK_VUS * 0.2) },
-        { duration: "1m", target: Math.round(PEAK_VUS * 0.5) },
-        { duration: "2m", target: Math.round(PEAK_VUS * 0.5) },
-        { duration: "1m", target: PEAK_VUS },
-        { duration: HOLD, target: PEAK_VUS },
-        { duration: "1m", target: 0 }
-      ],
-      gracefulRampDown: "30s"
-    },
-    // Logged-in members whose dashboard polls for notifications. Only runs when
-    // SESSION_COOKIE is provided. One shared session simulates the query shape
-    // and load; it does not exercise per-user data variety.
-    poll: {
-      executor: "ramping-vus",
-      exec: "poll",
-      startVUs: 0,
-      stages: [
-        { duration: "1m", target: Math.round(PEAK_VUS * 0.2) },
-        { duration: "2m", target: Math.round(PEAK_VUS * 0.2) },
-        { duration: "1m", target: Math.round(PEAK_VUS * 0.5) },
-        { duration: "2m", target: Math.round(PEAK_VUS * 0.5) },
-        { duration: "1m", target: PEAK_VUS },
-        { duration: HOLD, target: PEAK_VUS },
-        { duration: "1m", target: 0 }
-      ],
-      gracefulRampDown: "30s"
-    }
-  },
+  // Ensure p99 is computed for the summary (k6 defaults to p90/p95 only).
+  summaryTrendStats: ["avg", "min", "med", "p(95)", "p(99)", "max"],
+  scenarios,
   thresholds: {
     // Overall health gates — the test "fails" (non-zero exit) if breached.
     http_req_failed: ["rate<0.01"], // <1% requests error
