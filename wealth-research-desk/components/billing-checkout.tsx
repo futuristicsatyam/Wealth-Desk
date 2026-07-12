@@ -40,6 +40,12 @@ export function BillingCheckout({
   const [toast, setToast] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(
     null
   );
+  const [couponInput, setCouponInput] = useState("");
+  const [couponBusy, setCouponBusy] = useState(false);
+  const [couponMsg, setCouponMsg] = useState<string | null>(null);
+  const [coupon, setCoupon] = useState<{ code: string; discountPaise: number; finalPaise: number } | null>(
+    null
+  );
 
   useEffect(() => {
     // Free plans skip Razorpay entirely, so don't bother loading the gateway.
@@ -81,6 +87,37 @@ export function BillingCheckout({
     }
   }
 
+  async function applyCoupon() {
+    if (!plan || !couponInput.trim()) return;
+    setCouponBusy(true);
+    setCouponMsg(null);
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponInput.trim(), planCode: plan.code })
+      });
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        setCoupon({ code: data.code, discountPaise: data.discountPaise, finalPaise: data.finalPaise });
+        setCouponMsg(null);
+      } else {
+        setCoupon(null);
+        setCouponMsg(data.message ?? "This coupon is not valid");
+      }
+    } catch {
+      setCouponMsg("Could not check the coupon — please retry");
+    } finally {
+      setCouponBusy(false);
+    }
+  }
+
+  function removeCoupon() {
+    setCoupon(null);
+    setCouponInput("");
+    setCouponMsg(null);
+  }
+
   if (!plan) {
     return (
       <Card>
@@ -99,7 +136,7 @@ export function BillingCheckout({
       const orderResponse = await fetch("/api/subscriptions/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planCode: plan.code, accessToken })
+        body: JSON.stringify({ planCode: plan.code, accessToken, couponCode: coupon?.code })
       });
       const orderData = await orderResponse.json();
       if (!orderResponse.ok) {
@@ -163,10 +200,62 @@ export function BillingCheckout({
         <p className="text-xs uppercase tracking-wider text-accent">Selected plan</p>
         <p className="mt-1 text-xl font-semibold">{plan.name}</p>
         <p className="text-sm text-muted">
-          {isFree ? "Free" : formatInr(plan.amountPaise)} &middot; {plan.durationDays} days
-          {isFree ? "" : " · incl. GST invoice"}
+          {isFree ? (
+            "Free"
+          ) : coupon ? (
+            <>
+              <span className="line-through">{formatInr(plan.amountPaise)}</span>{" "}
+              <span className="font-semibold text-positive">{formatInr(coupon.finalPaise)}</span>
+            </>
+          ) : (
+            formatInr(plan.amountPaise)
+          )}{" "}
+          &middot; {plan.durationDays} days{isFree ? "" : " · incl. GST invoice"}
         </p>
       </div>
+
+      {/* Coupon entry — paid plans only. */}
+      {!isFree && paymentsConfigured && (
+        <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
+          {coupon ? (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm">
+                Coupon <span className="font-mono font-semibold">{coupon.code}</span> applied —{" "}
+                <span className="text-positive">you save {formatInr(coupon.discountPaise)}</span>
+              </p>
+              <Button type="button" variant="ghost" size="sm" onClick={removeCoupon}>
+                Remove
+              </Button>
+            </div>
+          ) : (
+            <>
+              <label htmlFor="coupon" className="text-xs font-medium text-muted">
+                Have a coupon?
+              </label>
+              <div className="mt-1.5 flex gap-2">
+                <input
+                  id="coupon"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="Enter code"
+                  className="h-9 flex-1 rounded-lg border border-border bg-background px-3 font-mono text-sm uppercase outline-none focus:border-accent"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={applyCoupon}
+                  disabled={couponBusy || !couponInput.trim()}
+                >
+                  {couponBusy ? "Checking…" : "Apply"}
+                </Button>
+              </div>
+              {couponMsg && <p className="mt-1.5 text-xs text-negative">{couponMsg}</p>}
+            </>
+          )}
+        </div>
+      )}
+
       {isFree ? (
         <>
           <Button onClick={activateFree} disabled={busy} className="w-full">
@@ -181,7 +270,9 @@ export function BillingCheckout({
       ) : (
         <>
           <Button onClick={startCheckout} disabled={busy || !scriptReady} className="w-full">
-            {busy ? "Processing..." : `Pay ${formatInr(plan.amountPaise)} securely`}
+            {busy
+              ? "Processing..."
+              : `Pay ${formatInr(coupon ? coupon.finalPaise : plan.amountPaise)} securely`}
           </Button>
           <p className="text-xs text-muted">
             Payments are processed by Razorpay. We never see or store your card details.

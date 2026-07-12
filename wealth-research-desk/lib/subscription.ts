@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type { SubscriptionPlanType, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { referralBonusDaysForPlan, referralBonusLabel } from "@/lib/referral";
+import { recordCouponRedemption } from "@/lib/coupons";
 
 export type Entitlement = {
   active: boolean;
@@ -150,6 +151,17 @@ export async function grantSubscriptionFromPayment(params: {
         gstAmountPaise
       }
     });
+
+    // Record the coupon redemption now that money has actually been captured —
+    // this is the authoritative point that counts against usage limits.
+    if (payment.couponCode) {
+      await recordCouponRedemption(tx, {
+        couponCode: payment.couponCode,
+        userId: payment.userId,
+        paymentId: payment.id,
+        discountPaise: payment.discountPaise ?? 0
+      });
+    }
 
     // Supersede previously active subscriptions for this user.
     await tx.subscription.updateMany({

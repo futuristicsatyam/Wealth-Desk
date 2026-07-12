@@ -5,6 +5,7 @@ import { consumeRateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/prisma";
 import { getRazorpayClient, isRazorpayConfigured } from "@/lib/razorpay";
 import { planTypeFromDuration, countPlanRedemptions, hasActivePlan } from "@/lib/subscription";
+import { validateCoupon } from "@/lib/coupons";
 import { createOrderSchema, firstError } from "@/lib/validations";
 
 export const runtime = "nodejs";
@@ -62,18 +63,38 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Apply a coupon if one was supplied. Re-validated server-side so a tampered
+  // client can't smuggle in a bogus discount — the Razorpay order is created
+  // for the discounted amount computed here, never a client-provided figure.
+  let chargeAmountPaise = plan.amountPaise;
+  let discountPaise = 0;
+  let appliedCouponCode: string | null = null;
+  if (parsed.data.couponCode) {
+    const couponResult = await validateCoupon({
+      code: parsed.data.couponCode,
+      plan,
+      userId: user.id
+    });
+    if (!couponResult.ok) {
+      return NextResponse.json({ message: couponResult.reason }, { status: 400 });
+    }
+    chargeAmountPaise = couponResult.pricing.finalPaise;
+    discountPaise = couponResult.pricing.discountPaise;
+    appliedCouponCode = couponResult.coupon.code;
+  }
+
   try {
     const order = await getRazorpayClient().orders.create({
-      amount: plan.amountPaise,
+      amount: chargeAmountPaise,
       currency: "INR",
       receipt: `wrd_${user.id.slice(-8)}_${Date.now()}`,
-      notes: { userId: user.id, planCode: plan.code }
+      notes: { userId: user.id, planCode: plan.code, coupon: appliedCouponCode ?? "" }
     });
 
     await prisma.payment.create({
       data: {
         userId: user.id,
-        amountPaise: plan.amountPaise,
+        amountPaise: chargeAmountPaise,
         currency: "INR",
         status: "CREATED",
         razorpayOrderId: order.id,
@@ -81,16 +102,20 @@ export async function POST(request: NextRequest) {
         planName: plan.name,
         planType: planTypeFromDuration(plan.durationDays, false),
         durationDays: plan.durationDays,
-        referralBonusDays: plan.referralBonusDays
+        referralBonusDays: plan.referralBonusDays,
+        couponCode: appliedCouponCode,
+        discountPaise: discountPaise || null
       }
     });
 
     return NextResponse.json({
       orderId: order.id,
-      amount: plan.amountPaise,
+      amount: chargeAmountPaise,
       currency: "INR",
       keyId: process.env.RAZORPAY_KEY_ID,
       planName: plan.name,
+      couponCode: appliedCouponCode,
+      discountPaise,
       customer: { name: user.name, email: user.email, contact: user.phone }
     });
   } catch (error) {

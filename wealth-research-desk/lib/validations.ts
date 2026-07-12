@@ -184,11 +184,45 @@ export const trialActivateSchema = z.object({
   deviceFingerprint: z.string().min(8).max(400)
 });
 
+// Coupon codes: 3-24 chars, letters/digits/dash/underscore, normalised upper.
+const couponCodeField = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9_-]{3,24}$/, "Code: 3-24 chars, A-Z, 0-9, - or _");
+
 export const createOrderSchema = z.object({
   planCode: z.string().trim().min(1).toUpperCase(),
   // Required when purchasing a private/special plan; ignored for public plans.
-  accessToken: z.string().trim().min(8).max(128).optional()
+  accessToken: z.string().trim().min(8).max(128).optional(),
+  // Optional discount coupon applied at checkout.
+  couponCode: z.string().trim().toUpperCase().max(24).optional()
 });
+
+export const validateCouponSchema = z.object({
+  code: couponCodeField,
+  planCode: z.string().trim().min(1).toUpperCase()
+});
+
+export const couponSchema = z
+  .object({
+    code: couponCodeField,
+    description: z.string().trim().max(200).optional(),
+    discountType: z.enum(["PERCENT", "FLAT"]),
+    // For PERCENT this is a percentage (1-100); for FLAT it's rupees off.
+    discountValue: z.number().int().min(1),
+    maxRedemptions: z.number().int().min(1).max(1000000).optional(),
+    perUserLimit: z.number().int().min(1).max(1000).default(1),
+    minAmountRupees: z.number().int().min(0).default(0),
+    planCodes: z.array(z.string().trim().toUpperCase()).max(20).default([]),
+    // ISO date (yyyy-mm-dd) or empty; expiry is end of that day.
+    expiresAt: z.string().trim().optional(),
+    isActive: z.boolean().default(true)
+  })
+  .refine((d) => d.discountType !== "PERCENT" || d.discountValue <= 100, {
+    message: "Percentage discount cannot exceed 100",
+    path: ["discountValue"]
+  });
 
 export const redeemPlanSchema = z.object({
   accessToken: z.string().trim().min(8).max(128)

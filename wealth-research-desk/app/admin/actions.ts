@@ -17,6 +17,7 @@ import {
   analystSchema,
   indexSchema,
   planSchema,
+  couponSchema,
   broadcastSchema,
   managedContentSchema,
   firstError
@@ -570,6 +571,129 @@ export async function togglePlanActiveAction(formData: FormData): Promise<void> 
   });
   revalidatePath("/admin/plans");
   revalidatePath("/membership");
+}
+
+/* ----------------------------- Coupons ---------------------------- */
+
+export async function createCouponAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+
+  const planCodes = String(formData.get("planCodes") ?? "")
+    .split(",")
+    .map((code) => code.trim().toUpperCase())
+    .filter(Boolean);
+  const expiresRaw = String(formData.get("expiresAt") ?? "").trim();
+
+  const parsed = couponSchema.safeParse({
+    code: formData.get("code"),
+    description: formData.get("description") || undefined,
+    discountType: formData.get("discountType"),
+    discountValue: num(formData.get("discountValue")),
+    maxRedemptions: optionalInt(formData.get("maxRedemptions")),
+    perUserLimit: num(formData.get("perUserLimit")) || 1,
+    minAmountRupees: num(formData.get("minAmountRupees")) || 0,
+    planCodes,
+    expiresAt: expiresRaw || undefined,
+    isActive: true
+  });
+  if (!parsed.success) return { status: "error", message: firstError(parsed.error) };
+
+  // FLAT discounts are entered in rupees → store paise; PERCENT stays a percent.
+  const discountValue =
+    parsed.data.discountType === "FLAT" ? parsed.data.discountValue * 100 : parsed.data.discountValue;
+
+  // Expiry is the END of the chosen day.
+  let expiresAt: Date | null = null;
+  if (parsed.data.expiresAt) {
+    const parsedDate = new Date(`${parsed.data.expiresAt}T23:59:59.999`);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return { status: "error", message: "Invalid expiry date" };
+    }
+    expiresAt = parsedDate;
+  }
+
+  try {
+    const coupon = await prisma.coupon.create({
+      data: {
+        code: parsed.data.code,
+        description: parsed.data.description ?? null,
+        discountType: parsed.data.discountType,
+        discountValue,
+        maxRedemptions: parsed.data.maxRedemptions ?? null,
+        perUserLimit: parsed.data.perUserLimit,
+        minAmountPaise: parsed.data.minAmountRupees * 100,
+        planCodes: parsed.data.planCodes,
+        expiresAt,
+        isActive: parsed.data.isActive
+      }
+    });
+    await logAudit({
+      actorId: admin.id,
+      actorName: admin.name,
+      action: "COUPON_CREATED",
+      entity: "Coupon",
+      entityId: coupon.id,
+      summary: `Created coupon ${parsed.data.code}`,
+      ipAddress: await clientIp()
+    });
+    revalidatePath("/admin/coupons");
+    return { status: "success", message: `Coupon ${parsed.data.code} created` };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { status: "error", message: "A coupon with this code already exists" };
+    }
+    console.error("[createCouponAction] failed", error);
+    return { status: "error", message: "Could not create the coupon" };
+  }
+}
+
+export async function toggleCouponActiveAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const couponId = String(formData.get("couponId") ?? "").trim();
+  if (!couponId) return;
+  const coupon = await prisma.coupon.findUnique({ where: { id: couponId } });
+  if (!coupon) return;
+
+  await prisma.coupon.update({ where: { id: couponId }, data: { isActive: !coupon.isActive } });
+  await logAudit({
+    actorId: admin.id,
+    actorName: admin.name,
+    action: "COUPON_TOGGLED",
+    entity: "Coupon",
+    entityId: couponId,
+    summary: `${coupon.isActive ? "Disabled" : "Enabled"} coupon ${coupon.code}`,
+    ipAddress: await clientIp()
+  });
+  revalidatePath("/admin/coupons");
+}
+
+export async function deleteCouponAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const couponId = String(formData.get("couponId") ?? "").trim();
+  if (!couponId) return;
+  const coupon = await prisma.coupon.findUnique({ where: { id: couponId } });
+  if (!coupon) return;
+
+  // Preserve history: a coupon that has been used is disabled, never deleted,
+  // so its redemption records (and usage counts) stay intact. The page hides
+  // the delete control for used coupons; this is the server-side guard.
+  if (coupon.timesRedeemed > 0) {
+    await prisma.coupon.update({ where: { id: couponId }, data: { isActive: false } });
+    revalidatePath("/admin/coupons");
+    return;
+  }
+
+  await prisma.coupon.delete({ where: { id: couponId } });
+  await logAudit({
+    actorId: admin.id,
+    actorName: admin.name,
+    action: "COUPON_DELETED",
+    entity: "Coupon",
+    entityId: couponId,
+    summary: `Deleted coupon ${coupon.code}`,
+    ipAddress: await clientIp()
+  });
+  revalidatePath("/admin/coupons");
 }
 
 /* -------------------------- Notifications ------------------------- */

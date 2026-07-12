@@ -63,6 +63,11 @@ enum TicketStatus {
   CLOSED
 }
 
+enum DiscountType {
+  PERCENT
+  FLAT
+}
+
 model User {
   id              String    @id @default(cuid())
   name            String
@@ -286,6 +291,10 @@ model Payment {
   // Referral bonus snapshotted from the plan at purchase, so the reward is
   // locked to what the plan offered when bought (null for pre-migration rows).
   referralBonusDays Int?
+  // Coupon applied at checkout, snapshotted. amountPaise is the DISCOUNTED
+  // (actually charged) amount; discountPaise is how much was taken off.
+  couponCode        String?
+  discountPaise     Int?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -405,4 +414,46 @@ model RateLimit {
   createdAt DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+model Coupon {
+  id             String       @id @default(cuid())
+  code           String       @unique // stored uppercase
+  description    String?
+  discountType   DiscountType
+  // PERCENT: 1-100 (percent off). FLAT: amount off in paise.
+  discountValue  Int
+  // Total distinct redemptions allowed across all users (null = unlimited).
+  maxRedemptions Int?
+  // How many times a single user may redeem this coupon.
+  perUserLimit   Int          @default(1)
+  // Minimum order amount (paise) the coupon applies to (0 = no minimum).
+  minAmountPaise Int          @default(0)
+  // Plan codes this coupon applies to; empty = every paid plan.
+  planCodes      String[]
+  expiresAt      DateTime?
+  isActive       Boolean      @default(true)
+  // Authoritative count, incremented only when a discounted payment captures.
+  timesRedeemed  Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  redemptions CouponRedemption[]
+
+  @@index([isActive])
+}
+
+model CouponRedemption {
+  id                    String   @id @default(cuid())
+  couponId              String
+  userId                String
+  // One redemption per payment; also makes the capture-time write idempotent.
+  paymentId             String   @unique
+  amountDiscountedPaise Int
+  createdAt             DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@index([couponId])
+  @@index([userId])
 }
