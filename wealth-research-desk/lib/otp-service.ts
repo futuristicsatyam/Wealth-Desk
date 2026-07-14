@@ -8,7 +8,7 @@ import {
   normalizePhoneNumber,
   otpSecret
 } from "@/lib/phone-otp";
-import { sendSms } from "@/lib/sms";
+import { sendOtpSms } from "@/lib/sms";
 
 type SendResult = { ok: boolean; message: string; devCode?: string };
 type CheckResult = { ok: boolean; message: string };
@@ -50,15 +50,18 @@ export async function sendPhoneOtp(rawPhone: string): Promise<SendResult> {
     }
   });
 
-  const sms = await sendSms({
-    to: phone,
-    body: `Your Wealth Research Desk verification code is ${code}. It expires in 10 minutes.`
-  });
+  const sms = await sendOtpSms({ to: phone, code });
 
-  // In development without Twilio, surface the code so registration can proceed.
-  if (sms.skipped && process.env.NODE_ENV !== "production") {
-    console.log(`[otp:dev] phone=${phone} code=${code}`);
-    return { ok: true, message: "Verification code generated (dev mode)", devCode: code };
+  if (!sms.sent) {
+    // Dev without an SMS provider: surface the code so registration can proceed.
+    if (sms.skipped && process.env.NODE_ENV !== "production") {
+      console.log(`[otp:dev] phone=${phone} code=${code}`);
+      return { ok: true, message: "Verification code generated (dev mode)", devCode: code };
+    }
+    // Real delivery failure (provider unconfigured in prod, or an API error).
+    // Fail loudly instead of falsely telling the user a code was sent.
+    console.error(`[otp] SMS delivery failed for ${phone}: ${sms.error ?? "unknown error"}`);
+    return { ok: false, message: "Could not send the verification code. Please try again shortly." };
   }
 
   return { ok: true, message: "Verification code sent to your mobile number" };
