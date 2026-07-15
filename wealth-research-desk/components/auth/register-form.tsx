@@ -65,10 +65,10 @@ export function RegisterForm({ initialReferralCode = "" }: { initialReferralCode
       return;
     }
     startOtp(async () => {
-      const response = await fetch("/api/auth/phone-otp/send", {
+      const response = await fetch("/api/auth/email-otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: details.phone })
+        body: JSON.stringify({ email: details.email })
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -85,7 +85,7 @@ export function RegisterForm({ initialReferralCode = "" }: { initialReferralCode
       <div>
         <h1 className="text-2xl font-semibold">Create your account</h1>
         <p className="mt-1 text-sm text-muted">
-          Step {step} of 2 - {step === 1 ? "your details" : "verify your mobile"}
+          Step {step} of 2 - {step === 1 ? "your details" : "verify your email"}
         </p>
       </div>
 
@@ -200,7 +200,7 @@ export function RegisterForm({ initialReferralCode = "" }: { initialReferralCode
           <input type="hidden" name="password" value={details.password} />
           <input type="hidden" name="riskAccepted" value={String(details.riskAccepted)} />
           <div>
-            <Label htmlFor="otp">Enter the 6-digit code sent to {details.phone}</Label>
+            <Label htmlFor="otp">Enter the 6-digit code sent to {details.email}</Label>
             <Input id="otp" name="otp" inputMode="numeric" maxLength={6} required />
           </div>
           <div className="flex gap-3">

@@ -334,6 +334,20 @@ model Notification {
   @@index([batchId])
 }
 
+model EmailOtp {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  otpHash           String
+  expiresAt         DateTime
+  resendAvailableAt DateTime
+  attempts          Int       @default(0)
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([expiresAt])
+}
+
 model PhoneOtp {
   id                String    @id @default(cuid())
   phone             String    @unique

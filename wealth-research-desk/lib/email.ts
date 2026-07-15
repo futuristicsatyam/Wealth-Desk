@@ -3,6 +3,10 @@ import { escapeHtml } from "@/lib/html";
 
 type SendEmailResult = { sent: boolean; skipped?: boolean; error?: string };
 
+function fromAddress(): string {
+  return process.env.RESEND_FROM || process.env.SMTP_FROM || "research@wealthdesk.in";
+}
+
 function getTransport() {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
@@ -16,15 +20,49 @@ function getTransport() {
   });
 }
 
-/** Sends a single email. Falls back to a console log when SMTP is not configured. */
+/** Sends via the Resend HTTP API. Requires RESEND_API_KEY + a verified sender domain. */
+async function sendViaResend(params: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<SendEmailResult> {
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: fromAddress(),
+        to: [params.to],
+        subject: params.subject,
+        html: params.html
+      })
+    });
+    if (response.ok) return { sent: true };
+    const data = (await response.json().catch(() => ({}))) as { message?: unknown };
+    const message = typeof data?.message === "string" ? data.message : `Resend error ${response.status}`;
+    return { sent: false, error: message };
+  } catch (error) {
+    return { sent: false, error: error instanceof Error ? error.message : "Email failed" };
+  }
+}
+
+/**
+ * Sends a single email. Prefers Resend (RESEND_API_KEY), then SMTP, and in
+ * development falls back to a console log when neither is configured.
+ */
 export async function sendEmail(params: {
   to: string;
   subject: string;
   html: string;
 }): Promise<SendEmailResult> {
-  const transport = getTransport();
-  const from = process.env.SMTP_FROM || "research@wealthdesk.in";
+  if (process.env.RESEND_API_KEY) {
+    return sendViaResend(params);
+  }
 
+  const transport = getTransport();
   if (!transport) {
     if (process.env.NODE_ENV !== "production") {
       console.log(`[email:dev] to=${params.to} subject=${params.subject}`);
@@ -33,7 +71,12 @@ export async function sendEmail(params: {
   }
 
   try {
-    await transport.sendMail({ from, to: params.to, subject: params.subject, html: params.html });
+    await transport.sendMail({
+      from: fromAddress(),
+      to: params.to,
+      subject: params.subject,
+      html: params.html
+    });
     return { sent: true };
   } catch (error) {
     return { sent: false, error: error instanceof Error ? error.message : "Email failed" };

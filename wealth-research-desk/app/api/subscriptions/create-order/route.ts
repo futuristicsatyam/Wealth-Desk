@@ -48,6 +48,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "This plan cannot be purchased online" }, { status: 400 });
   }
 
+  // Phone verification is deferred to the paid-plan purchase (not registration
+  // or trial). A member must verify their mobile before buying a paid plan.
+  const account = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { phoneVerifiedAt: true }
+  });
+  if (!account?.phoneVerifiedAt) {
+    return NextResponse.json(
+      { message: "Please verify your mobile number before purchasing.", code: "phone_verification_required" },
+      { status: 403 }
+    );
+  }
+
   // Private/special plans require a matching access token and honour the
   // redemption cap. This is the authoritative server-side gate — the link is
   // the only way to reach a private plan's checkout.

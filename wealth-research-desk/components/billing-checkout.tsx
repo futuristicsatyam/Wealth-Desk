@@ -24,11 +24,14 @@ type PlanOption = { code: string; name: string; amountPaise: number; durationDay
 export function BillingCheckout({
   plan,
   paymentsConfigured,
+  phoneVerified = true,
   accessToken,
   successHref = "/dashboard/subscription"
 }: {
   plan: PlanOption | null;
   paymentsConfigured: boolean;
+  /** Whether the member's mobile is already verified. Paid plans require it. */
+  phoneVerified?: boolean;
   /** Present for private/special plans — forwarded to the server for gating. */
   accessToken?: string;
   successHref?: string;
@@ -46,6 +49,68 @@ export function BillingCheckout({
   const [coupon, setCoupon] = useState<{ code: string; discountPaise: number; finalPaise: number } | null>(
     null
   );
+  // Phone verification (paid plans only). Starts from the server-provided flag.
+  const [phoneOk, setPhoneOk] = useState(phoneVerified);
+  const [phoneStep, setPhoneStep] = useState<"idle" | "sent">("idle");
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [phoneBusy, setPhoneBusy] = useState(false);
+  const [phoneMsg, setPhoneMsg] = useState<{ tone: "info" | "error" | "success"; text: string } | null>(
+    null
+  );
+
+  async function sendPhoneCode() {
+    setPhoneBusy(true);
+    setPhoneMsg(null);
+    try {
+      const res = await fetch("/api/account/phone/send-otp", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.alreadyVerified) {
+          setPhoneOk(true);
+        } else {
+          setPhoneStep("sent");
+          setPhoneMsg({
+            tone: "info",
+            text: data.devCode ? `Dev code: ${data.devCode}` : (data.message ?? "Code sent to your mobile")
+          });
+        }
+      } else {
+        setPhoneMsg({ tone: "error", text: data.message ?? "Could not send the code" });
+      }
+    } catch {
+      setPhoneMsg({ tone: "error", text: "Network error — please retry" });
+    } finally {
+      setPhoneBusy(false);
+    }
+  }
+
+  async function verifyPhoneCode() {
+    if (!/^\d{6}$/.test(phoneOtp)) {
+      setPhoneMsg({ tone: "error", text: "Enter the 6-digit code" });
+      return;
+    }
+    setPhoneBusy(true);
+    setPhoneMsg(null);
+    try {
+      const res = await fetch("/api/account/phone/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otp: phoneOtp })
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setPhoneOk(true);
+        setPhoneMsg({ tone: "success", text: "Mobile verified" });
+        router.refresh();
+      } else {
+        setPhoneMsg({ tone: "error", text: data.message ?? "Verification failed" });
+      }
+    } catch {
+      setPhoneMsg({ tone: "error", text: "Network error — please retry" });
+    } finally {
+      setPhoneBusy(false);
+    }
+  }
 
   useEffect(() => {
     // Free plans skip Razorpay entirely, so don't bother loading the gateway.
@@ -256,6 +321,64 @@ export function BillingCheckout({
         </div>
       )}
 
+      {/* Phone verification — required once, before a paid purchase. */}
+      {!isFree && paymentsConfigured && !phoneOk && (
+        <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-3">
+          <p className="text-sm font-medium">Verify your mobile number</p>
+          <p className="mt-0.5 text-xs text-muted">
+            A quick one-time check on your registered mobile is required before your first paid plan.
+          </p>
+          {phoneMsg && (
+            <p
+              className={`mt-2 text-xs ${
+                phoneMsg.tone === "error"
+                  ? "text-negative"
+                  : phoneMsg.tone === "success"
+                    ? "text-positive"
+                    : "text-muted"
+              }`}
+            >
+              {phoneMsg.text}
+            </p>
+          )}
+          {phoneStep === "idle" ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={sendPhoneCode}
+              disabled={phoneBusy}
+            >
+              {phoneBusy ? "Sending…" : "Send code"}
+            </Button>
+          ) : (
+            <div className="mt-2 flex gap-2">
+              <input
+                inputMode="numeric"
+                maxLength={6}
+                value={phoneOtp}
+                onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, ""))}
+                placeholder="6-digit code"
+                className="h-9 w-32 rounded-lg border border-border bg-background px-3 text-sm tabular-nums outline-none focus:border-accent"
+              />
+              <Button type="button" size="sm" onClick={verifyPhoneCode} disabled={phoneBusy}>
+                {phoneBusy ? "Verifying…" : "Verify"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={sendPhoneCode}
+                disabled={phoneBusy}
+              >
+                Resend
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {isFree ? (
         <>
           <Button onClick={activateFree} disabled={busy} className="w-full">
@@ -269,13 +392,19 @@ export function BillingCheckout({
         <InlineToast tone="error" message="Online payments are not configured. Contact support." />
       ) : (
         <>
-          <Button onClick={startCheckout} disabled={busy || !scriptReady} className="w-full">
+          <Button
+            onClick={startCheckout}
+            disabled={busy || !scriptReady || !phoneOk}
+            className="w-full"
+          >
             {busy
               ? "Processing..."
               : `Pay ${formatInr(coupon ? coupon.finalPaise : plan.amountPaise)} securely`}
           </Button>
           <p className="text-xs text-muted">
-            Payments are processed by Razorpay. We never see or store your card details.
+            {phoneOk
+              ? "Payments are processed by Razorpay. We never see or store your card details."
+              : "Verify your mobile number above to continue to payment."}
           </p>
         </>
       )}

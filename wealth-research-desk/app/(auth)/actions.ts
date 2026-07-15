@@ -6,7 +6,7 @@ import { AuthError } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { signIn } from "@/lib/auth";
-import { checkPhoneOtp } from "@/lib/otp-service";
+import { checkEmailOtp } from "@/lib/otp-service";
 import { createPasswordResetToken, consumePasswordReset } from "@/lib/password-reset";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/audit";
@@ -90,7 +90,7 @@ export async function registerAction(_prev: ActionState, formData: FormData): Pr
 
   const otp = String(formData.get("otp") ?? "");
   if (!/^\d{6}$/.test(otp)) {
-    return { status: "error", message: "Enter the 6-digit verification code" };
+    return { status: "error", message: "Enter the 6-digit email verification code" };
   }
 
   const ip = await clientIp();
@@ -124,8 +124,9 @@ export async function registerAction(_prev: ActionState, formData: FormData): Pr
     return { status: "error", message: "An account with these details already exists" };
   }
 
-  // Verify and consume the OTP only once the account is known to be creatable.
-  const otpCheck = await checkPhoneOtp(data.phone, otp, true);
+  // Verify and consume the EMAIL OTP only once the account is known to be
+  // creatable. Phone is collected but verified later, at paid checkout.
+  const otpCheck = await checkEmailOtp(data.email, otp, true);
   if (!otpCheck.ok) {
     return { status: "error", message: otpCheck.message };
   }
@@ -154,7 +155,8 @@ export async function registerAction(_prev: ActionState, formData: FormData): Pr
         panHash,
         aadhaarHash,
         passwordHash,
-        phoneVerifiedAt: new Date(),
+        // Email is verified via OTP above; phone is verified later at paid checkout.
+        emailVerifiedAt: new Date(),
         legalAcceptedAt: new Date(),
         role: "USER",
         referredByUserId

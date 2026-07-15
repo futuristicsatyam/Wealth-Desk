@@ -17,7 +17,7 @@ export default async function BillingPage({
   const { plan: planCode } = await searchParams;
   const user = await requireUser();
 
-  const [selectedPlan, payments] = await Promise.all([
+  const [selectedPlan, payments, account] = await Promise.all([
     planCode
       ? prisma.planConfig.findFirst({
           // Private/special plans can only be purchased via their access link,
@@ -29,7 +29,8 @@ export default async function BillingPage({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
       take: 20
-    })
+    }),
+    prisma.user.findUnique({ where: { id: user.id }, select: { phoneVerifiedAt: true } })
   ]);
 
   return (
@@ -41,6 +42,7 @@ export default async function BillingPage({
 
       <BillingCheckout
         paymentsConfigured={isRazorpayConfigured()}
+        phoneVerified={Boolean(account?.phoneVerifiedAt)}
         plan={
           selectedPlan
             ? {

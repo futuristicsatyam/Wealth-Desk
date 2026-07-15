@@ -235,6 +235,8 @@ export const verifyPaymentSchema = z.object({
 });
 
 export const phoneSendSchema = z.object({ phone: z.string().min(8) });
+export const emailSendSchema = z.object({ email: z.string().trim().email("Enter a valid email").toLowerCase() });
+export const otpOnlySchema = z.object({ otp: z.string().regex(/^\d{6}$/, "OTP must be 6 digits") });
 export const phoneVerifySchema = z.object({
   phone: z.string().min(8),
   otp: z.string().regex(/^\d{6}$/, "OTP must be 6 digits")

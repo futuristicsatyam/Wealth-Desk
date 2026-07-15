@@ -1,53 +1,42 @@
 type SendSmsResult = { sent: boolean; skipped?: boolean; error?: string };
 
-/** MSG91 wants the number with country code and no "+". Indian → 91XXXXXXXXXX. */
-function toMsg91Mobile(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  return digits.startsWith("91") ? digits : `91${digits}`;
+function toE164(phone: string): string {
+  return phone.startsWith("+") ? phone : `+91${phone}`;
 }
 
 /**
- * Sends a one-time code via MSG91's OTP API using a DLT-approved template.
- * We pass our own generated `code` (MSG91 just delivers it) so verification
- * stays in our DB. Gracefully "skips" when MSG91 isn't configured, letting dev
- * fall back to the console code.
- *
- * Requires (from the MSG91 dashboard):
- *   MSG91_AUTH_KEY         – account auth key
- *   MSG91_OTP_TEMPLATE_ID  – a DLT-approved OTP template containing an ##OTP## var
- *   MSG91_SENDER_ID        – optional 6-char DLT sender/header id
+ * Sends a one-time code via Twilio. Used only for the low-volume phone
+ * verification at paid checkout (not registration), so cost stays minimal.
+ * Gracefully "skips" when Twilio is unconfigured, letting dev fall back to the
+ * console code.
  */
 export async function sendOtpSms(params: { to: string; code: string }): Promise<SendSmsResult> {
-  const authKey = process.env.MSG91_AUTH_KEY;
-  const templateId = process.env.MSG91_OTP_TEMPLATE_ID;
-  if (!authKey || !templateId) {
-    return { sent: false, skipped: true, error: "MSG91 not configured" };
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_PHONE_NUMBER;
+
+  if (!sid || !token || !from) {
+    return { sent: false, skipped: true, error: "Twilio not configured" };
   }
 
-  const url = new URL("https://control.msg91.com/api/v5/otp");
-  url.searchParams.set("template_id", templateId);
-  url.searchParams.set("mobile", toMsg91Mobile(params.to));
-  url.searchParams.set("otp", params.code);
-  url.searchParams.set("otp_length", String(params.code.length));
-  if (process.env.MSG91_SENDER_ID) url.searchParams.set("sender", process.env.MSG91_SENDER_ID);
+  const body = `Your Wealth Research Desk verification code is ${params.code}. It expires in 10 minutes.`;
 
   try {
-    const response = await fetch(url.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", authkey: authKey },
-      // Body carries template variables; the ##OTP## var is satisfied by the
-      // `otp` query param above, so an empty object is fine for a basic template.
-      body: JSON.stringify({})
-    });
-    const data = (await response.json().catch(() => ({}))) as { type?: string; message?: unknown };
-
-    // MSG91 returns { type: "success" } on accept, { type: "error", message } otherwise.
-    if (response.ok && data?.type === "success") {
-      return { sent: true };
+    const response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({ To: toE164(params.to), From: from, Body: body }).toString()
+      }
+    );
+    if (!response.ok) {
+      return { sent: false, error: `Twilio error ${response.status}` };
     }
-    const message =
-      typeof data?.message === "string" ? data.message : `MSG91 error ${response.status}`;
-    return { sent: false, error: message };
+    return { sent: true };
   } catch (error) {
     return { sent: false, error: error instanceof Error ? error.message : "SMS failed" };
   }
