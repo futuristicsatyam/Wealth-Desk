@@ -14,11 +14,16 @@ export const maxDuration = 60;
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = request.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ ok: false }, { status: 401 });
+  if (!secret) {
+    // Fail closed in production: an unconfigured secret must never leave the
+    // dispatcher publicly triggerable (forced sends / cost / DoS). Dev without a
+    // secret is allowed so local cron testing works.
+    if (process.env.NODE_ENV === "production") {
+      console.error("[cron] CRON_SECRET is not configured — refusing to run");
+      return NextResponse.json({ ok: false, error: "not_configured" }, { status: 503 });
     }
+  } else if (request.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ ok: false }, { status: 401 });
   }
 
   let processed = 0;

@@ -1,16 +1,79 @@
 "use server";
 
 import crypto from "crypto";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { supportTicketSchema, firstError } from "@/lib/validations";
+import { consumeRateLimit } from "@/lib/rate-limit";
+import { logAudit } from "@/lib/audit";
+import { supportTicketSchema, changePasswordSchema, reviewSubmitSchema, firstError } from "@/lib/validations";
 import { telegramConnectLink } from "@/lib/telegram";
 
 export type ActionState = { status: "idle" | "error" | "success"; message: string };
 
 export type TelegramLinkState = { status: "idle" | "error" | "success"; message: string; link?: string };
+
+async function clientIp(): Promise<string> {
+  const headerList = await headers();
+  return (
+    headerList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    headerList.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+/**
+ * Lets a signed-in member change their password. Verifies the current password,
+ * then sets the new hash and bumps `sessionVersion` so every existing session
+ * (this browser and any others) is invalidated — the member must sign back in.
+ */
+export async function changePasswordAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser();
+
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: formData.get("currentPassword"),
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword")
+  });
+  if (!parsed.success) {
+    return { status: "error", message: firstError(parsed.error) };
+  }
+
+  const ip = await clientIp();
+  const limit = await consumeRateLimit(`pwchange:${user.id}`, 10, 60 * 60 * 1000);
+  if (!limit.allowed) {
+    return { status: "error", message: "Too many attempts. Please try again later." };
+  }
+
+  const valid = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+  if (!valid) {
+    return { status: "error", message: "Your current password is incorrect." };
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash, sessionVersion: { increment: 1 } }
+  });
+
+  await logAudit({
+    actorId: user.id,
+    actorName: user.name,
+    action: "PASSWORD_CHANGED",
+    entity: "User",
+    entityId: user.id,
+    summary: `${user.name} changed their password`,
+    ipAddress: ip
+  });
+
+  return { status: "success", message: "Password updated. Sign in again with your new password." };
+}
 
 /** Member raises a support ticket (fixes the previously non-functional form). */
 export async function createSupportTicketAction(
@@ -84,4 +147,54 @@ export async function disconnectTelegramAction(): Promise<void> {
     data: { telegramChatId: null, telegramLinkedAt: null, telegramLinkToken: null }
   });
   revalidatePath("/dashboard/notifications");
+}
+
+/**
+ * Member submits (or updates) their own review from the dashboard. It's stored
+ * against their account (one per member) and always lands UNPUBLISHED — an admin
+ * must verify it before it appears on the home page. Editing an already-approved
+ * review re-queues it for verification.
+ */
+export async function submitReviewAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser();
+
+  const parsed = reviewSubmitSchema.safeParse({
+    quote: formData.get("quote"),
+    authorRole: formData.get("authorRole") || undefined,
+    rating: formData.get("rating") ? Number(formData.get("rating")) : undefined
+  });
+  if (!parsed.success) {
+    return { status: "error", message: firstError(parsed.error) };
+  }
+
+  await prisma.review.upsert({
+    where: { userId: user.id },
+    create: {
+      userId: user.id,
+      authorName: user.name,
+      authorRole: parsed.data.authorRole ?? null,
+      quote: parsed.data.quote,
+      rating: parsed.data.rating ?? null,
+      isPublished: false
+    },
+    update: {
+      authorName: user.name,
+      authorRole: parsed.data.authorRole ?? null,
+      quote: parsed.data.quote,
+      rating: parsed.data.rating ?? null,
+      // Any edit re-enters the verification queue.
+      isPublished: false
+    }
+  });
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/admin/reviews");
+  revalidatePath("/");
+  return {
+    status: "success",
+    message: "Thanks! Your review was submitted and will appear once our team approves it."
+  };
 }

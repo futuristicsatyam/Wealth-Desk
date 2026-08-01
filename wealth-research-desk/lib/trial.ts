@@ -11,6 +11,10 @@ export type TrialEligibility = {
   reason?: string;
 };
 
+// Distinct trials allowed from one network (ipHash). Tolerates a few legitimate
+// users behind shared NAT/office IPs while stopping bulk trial farming.
+const MAX_TRIALS_PER_IP = 3;
+
 /** Determines whether a user can still start a trial. */
 export async function getTrialEligibility(userId: string): Promise<TrialEligibility> {
   const [user, paidSub, trialUsage] = await Promise.all([
@@ -64,6 +68,27 @@ export async function activateTrial(params: {
 
   // Salted so the stored hash is not reversible via a rainbow table of IPs.
   const ipHash = crypto.createHash("sha256").update(`${otpSecret()}:${params.ipAddress}`).digest("hex");
+  const storedFingerprint = params.deviceFingerprint.slice(0, 400);
+
+  // Enforce the abuse signals we record (previously collected but unused): a
+  // browser that already ran a trial is refused, and a single network is capped
+  // at a handful of trials — so one person can't farm unlimited trials from
+  // fresh accounts on one machine. (KYC blind-index uniqueness already blocks
+  // reusing the same PAN/Aadhaar; this raises the bar on the remaining vectors.)
+  const [deviceUsed, ipCount] = await Promise.all([
+    prisma.trialUsage.findFirst({
+      where: { deviceFingerprint: storedFingerprint, userId: { not: params.userId } },
+      select: { id: true }
+    }),
+    prisma.trialUsage.count({ where: { ipHash } })
+  ]);
+  if (deviceUsed) {
+    return { ok: false, message: "A free trial has already been used on this device." };
+  }
+  if (ipCount >= MAX_TRIALS_PER_IP) {
+    return { ok: false, message: "The free-trial limit for this network has been reached." };
+  }
+
   const startedAt = new Date();
   const expiresAt = addDays(startedAt, trial.days);
 
@@ -75,7 +100,7 @@ export async function activateTrial(params: {
           startedAt,
           expiresAt,
           ipHash,
-          deviceFingerprint: params.deviceFingerprint.slice(0, 400)
+          deviceFingerprint: storedFingerprint
         }
       }),
       prisma.user.update({ where: { id: params.userId }, data: { trialConsumed: true } }),

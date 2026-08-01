@@ -10,7 +10,8 @@ const BASE_NAV: NavItem[] = [
   { label: "Notifications", href: "/dashboard/notifications", icon: "notifications" },
   { label: "Subscription", href: "/dashboard/subscription", icon: "subscription" },
   { label: "Billing", href: "/dashboard/billing", icon: "billing" },
-  { label: "Support", href: "/dashboard/support", icon: "support" }
+  { label: "Support", href: "/dashboard/support", icon: "support" },
+  { label: "Settings", href: "/dashboard/settings", icon: "settings" }
 ];
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {

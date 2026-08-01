@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import {
   OTP_MAX_ATTEMPTS,
@@ -8,6 +9,14 @@ import {
   normalizePhoneNumber,
   otpSecret
 } from "@/lib/phone-otp";
+
+/** Constant-time comparison of two hex-encoded hashes (defends timing oracles). */
+function hashesEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "hex");
+  const bb = Buffer.from(b, "hex");
+  if (ab.length !== bb.length || ab.length === 0) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
 import { sendOtpSms } from "@/lib/sms";
 import { sendEmail, emailLayout } from "@/lib/email";
 import { escapeHtml } from "@/lib/html";
@@ -152,7 +161,7 @@ export async function checkEmailOtp(
   }
 
   const expectedHash = hashOtp({ phone: email, otp, secret: otpSecret() });
-  if (expectedHash !== record.otpHash) {
+  if (!hashesEqual(expectedHash, record.otpHash)) {
     await prisma.emailOtp.update({ where: { email }, data: { attempts: { increment: 1 } } });
     return { ok: false, message: "Incorrect verification code" };
   }
@@ -188,7 +197,7 @@ export async function checkPhoneOtp(
   }
 
   const expectedHash = hashOtp({ phone, otp, secret: otpSecret() });
-  if (expectedHash !== record.otpHash) {
+  if (!hashesEqual(expectedHash, record.otpHash)) {
     await prisma.phoneOtp.update({
       where: { phone },
       data: { attempts: { increment: 1 } }

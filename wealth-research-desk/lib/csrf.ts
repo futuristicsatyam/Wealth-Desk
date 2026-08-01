@@ -16,9 +16,12 @@ export function verifyOrigin(request: NextRequest): boolean {
 }
 
 export function getClientIp(request: NextRequest): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown"
-  );
+  // Prefer `x-real-ip`: on Vercel (and most managed platforms) the edge sets this
+  // to the true client IP and a client cannot forge it through the proxy. The
+  // first value of a client-supplied `x-forwarded-for` is attacker-controlled, so
+  // it is only a last-resort fallback (local/dev, no trusted proxy).
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+  const xff = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return xff || "unknown";
 }

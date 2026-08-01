@@ -19,6 +19,7 @@ import {
   indexSchema,
   planSchema,
   couponSchema,
+  reviewSchema,
   broadcastSchema,
   managedContentSchema,
   firstError
@@ -830,4 +831,85 @@ export async function resolveSupportTicketAction(formData: FormData): Promise<vo
   revalidatePath("/dashboard/support");
   revalidatePath("/dashboard/notifications");
   revalidatePath("/dashboard");
+}
+
+/* ----------------------------- Reviews ----------------------------- */
+
+export async function createReviewAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+
+  const parsed = reviewSchema.safeParse({
+    authorName: formData.get("authorName"),
+    authorRole: formData.get("authorRole") || undefined,
+    quote: formData.get("quote"),
+    rating: optionalInt(formData.get("rating")),
+    sortOrder: num(formData.get("sortOrder")) || 0,
+    isPublished: formData.get("isPublished") === "on"
+  });
+  if (!parsed.success) return { status: "error", message: firstError(parsed.error) };
+
+  const review = await prisma.review.create({
+    data: {
+      authorName: parsed.data.authorName,
+      authorRole: parsed.data.authorRole ?? null,
+      quote: parsed.data.quote,
+      rating: parsed.data.rating ?? null,
+      sortOrder: parsed.data.sortOrder,
+      isPublished: parsed.data.isPublished
+    }
+  });
+  await logAudit({
+    actorId: admin.id,
+    actorName: admin.name,
+    action: "REVIEW_CREATED",
+    entity: "Review",
+    entityId: review.id,
+    summary: `Added review by ${review.authorName}`,
+    ipAddress: await clientIp()
+  });
+  revalidatePath("/admin/reviews");
+  revalidatePath("/");
+  return { status: "success", message: "Review added" };
+}
+
+export async function toggleReviewPublishedAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const reviewId = String(formData.get("reviewId") ?? "").trim();
+  if (!reviewId) return;
+  const review = await prisma.review.findUnique({ where: { id: reviewId } });
+  if (!review) return;
+
+  await prisma.review.update({ where: { id: reviewId }, data: { isPublished: !review.isPublished } });
+  await logAudit({
+    actorId: admin.id,
+    actorName: admin.name,
+    action: "REVIEW_TOGGLED",
+    entity: "Review",
+    entityId: reviewId,
+    summary: `${review.isPublished ? "Unpublished" : "Published"} review by ${review.authorName}`,
+    ipAddress: await clientIp()
+  });
+  revalidatePath("/admin/reviews");
+  revalidatePath("/");
+}
+
+export async function deleteReviewAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const reviewId = String(formData.get("reviewId") ?? "").trim();
+  if (!reviewId) return;
+  const review = await prisma.review.findUnique({ where: { id: reviewId } });
+  if (!review) return;
+
+  await prisma.review.delete({ where: { id: reviewId } });
+  await logAudit({
+    actorId: admin.id,
+    actorName: admin.name,
+    action: "REVIEW_DELETED",
+    entity: "Review",
+    entityId: reviewId,
+    summary: `Deleted review by ${review.authorName}`,
+    ipAddress: await clientIp()
+  });
+  revalidatePath("/admin/reviews");
+  revalidatePath("/");
 }

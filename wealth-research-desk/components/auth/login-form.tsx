@@ -17,6 +17,7 @@ export function LoginForm() {
 
   const justRegistered = params.get("registered") === "1";
   const justReset = params.get("reset") === "1";
+  const justChangedPassword = params.get("passwordChanged") === "1";
   const nextPath = params.get("next") || "/dashboard";
   const authRequired = params.get("error") === "auth_required";
   const error = authRequired ? "Please sign in to continue." : state.status === "error" ? state.message : null;
@@ -30,6 +31,9 @@ export function LoginForm() {
 
       {justRegistered && <InlineToast tone="success" message="Account created. Please sign in." />}
       {justReset && <InlineToast tone="success" message="Password updated. Please sign in." />}
+      {justChangedPassword && (
+        <InlineToast tone="success" message="Password changed. Please sign in with your new password." />
+      )}
       {error && <InlineToast tone="error" message={error} />}
 
       <form action={formAction} className="space-y-4">

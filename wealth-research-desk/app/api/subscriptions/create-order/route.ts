@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getRazorpayClient, isRazorpayConfigured } from "@/lib/razorpay";
 import { planTypeFromDuration, countPlanRedemptions, hasActivePlan } from "@/lib/subscription";
 import { validateCoupon } from "@/lib/coupons";
+import { PHONE_VERIFICATION_ENABLED } from "@/lib/env";
 import { createOrderSchema, firstError } from "@/lib/validations";
 
 export const runtime = "nodejs";
@@ -48,17 +49,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "This plan cannot be purchased online" }, { status: 400 });
   }
 
-  // Phone verification is deferred to the paid-plan purchase (not registration
-  // or trial). A member must verify their mobile before buying a paid plan.
-  const account = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: { phoneVerifiedAt: true }
-  });
-  if (!account?.phoneVerifiedAt) {
-    return NextResponse.json(
-      { message: "Please verify your mobile number before purchasing.", code: "phone_verification_required" },
-      { status: 403 }
-    );
+  // Phone verification at paid checkout is behind a feature flag. It's currently
+  // disabled (no DLT for A2P SMS to India), so this gate is skipped. Re-enable by
+  // setting PHONE_VERIFICATION_ENABLED=true once Twilio/gateway + DLT are ready.
+  if (PHONE_VERIFICATION_ENABLED) {
+    const account = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { phoneVerifiedAt: true }
+    });
+    if (!account?.phoneVerifiedAt) {
+      return NextResponse.json(
+        { message: "Please verify your mobile number before purchasing.", code: "phone_verification_required" },
+        { status: 403 }
+      );
+    }
   }
 
   // Private/special plans require a matching access token and honour the

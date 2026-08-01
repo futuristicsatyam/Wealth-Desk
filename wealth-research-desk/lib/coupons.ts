@@ -9,6 +9,15 @@ type TxClient = Omit<typeof prisma, `$${string}`>;
 /** Razorpay's minimum order amount is ₹1 — a discount can never take the charge below this. */
 const MIN_CHARGE_PAISE = 100;
 
+/**
+ * How long a created-but-unpaid discounted order counts against a coupon's
+ * limits. Redemptions are only *recorded* at capture, so without counting these
+ * in-flight orders a user could mint many discounted orders before paying any
+ * and blow past perUserLimit / maxRedemptions (TOCTOU). Orders older than this
+ * are treated as abandoned and no longer reserve a slot.
+ */
+const PENDING_ORDER_WINDOW_MS = 30 * 60 * 1000;
+
 export type CouponPricing = {
   discountPaise: number;
   finalPaise: number;
@@ -62,14 +71,33 @@ export async function validateCoupon(params: {
   if (params.plan.amountPaise < coupon.minAmountPaise) {
     return { ok: false, reason: "Order value is below this coupon’s minimum" };
   }
-  if (coupon.maxRedemptions != null && coupon.timesRedeemed >= coupon.maxRedemptions) {
-    return { ok: false, reason: "This coupon has reached its usage limit" };
+  // Count usage as (captured redemptions) + (created-but-unpaid orders still in
+  // the reservation window). Redemptions alone are written only at capture, so
+  // counting live pending orders too closes the mint-many-orders-before-paying
+  // race that would otherwise bypass these caps.
+  const pendingSince = new Date(Date.now() - PENDING_ORDER_WINDOW_MS);
+
+  if (coupon.maxRedemptions != null) {
+    const pendingGlobal = await prisma.payment.count({
+      where: { couponCode: coupon.code, status: "CREATED", createdAt: { gte: pendingSince } }
+    });
+    if (coupon.timesRedeemed + pendingGlobal >= coupon.maxRedemptions) {
+      return { ok: false, reason: "This coupon has reached its usage limit" };
+    }
   }
 
-  const userUses = await prisma.couponRedemption.count({
-    where: { couponId: coupon.id, userId: params.userId }
-  });
-  if (userUses >= coupon.perUserLimit) {
+  const [userRedemptions, userPending] = await Promise.all([
+    prisma.couponRedemption.count({ where: { couponId: coupon.id, userId: params.userId } }),
+    prisma.payment.count({
+      where: {
+        userId: params.userId,
+        couponCode: coupon.code,
+        status: "CREATED",
+        createdAt: { gte: pendingSince }
+      }
+    })
+  ]);
+  if (userRedemptions + userPending >= coupon.perUserLimit) {
     return { ok: false, reason: "You have already used this coupon" };
   }
 

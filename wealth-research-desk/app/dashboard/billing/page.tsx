@@ -5,6 +5,7 @@ import { BillingCheckout } from "@/components/billing-checkout";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { isRazorpayConfigured } from "@/lib/razorpay";
+import { PHONE_VERIFICATION_ENABLED } from "@/lib/env";
 import { formatDate, formatInrPrecise, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,7 @@ export default async function BillingPage({
 
       <BillingCheckout
         paymentsConfigured={isRazorpayConfigured()}
+        phoneVerificationRequired={PHONE_VERIFICATION_ENABLED}
         phoneVerified={Boolean(account?.phoneVerifiedAt)}
         plan={
           selectedPlan

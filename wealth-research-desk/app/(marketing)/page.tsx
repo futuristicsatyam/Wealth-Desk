@@ -3,6 +3,7 @@ import { ShieldCheck, LineChart, Bell, Gauge, FileCheck, ArrowRight } from "luci
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PricingTable } from "@/components/pricing-table";
+import { Testimonials } from "@/components/marketing/testimonials";
 import { HeroVisual } from "@/components/marketing/hero-visual";
 import { DottedSurface } from "@/components/ui/dotted-surface";
 import { Reveal, Stagger, StaggerItem } from "@/components/motion/reveal";
@@ -29,13 +30,19 @@ const buildSteps = (trialDays: number) => [
 ];
 
 export default async function HomePage() {
-  const [user, plans, closedTrades, activeTrades, userCount, trial] = await Promise.all([
+  const [user, plans, closedTrades, activeTrades, userCount, trial, reviews] = await Promise.all([
     getCurrentUser(),
     getActivePlans(),
     prisma.trade.count({ where: { status: { not: "ACTIVE" } } }),
     prisma.trade.count({ where: { status: "ACTIVE" } }),
     prisma.user.count(),
-    getTrialPlanInfo()
+    getTrialPlanInfo(),
+    prisma.review.findMany({
+      where: { isPublished: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+      take: 9,
+      select: { id: true, authorName: true, authorRole: true, quote: true, rating: true }
+    })
   ]);
 
   const STEPS = buildSteps(trial.days);
@@ -193,6 +200,9 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ── Member feedback (service experience only, SEBI-compliant) ────── */}
+      <Testimonials reviews={reviews} />
 
       {/* ── Pricing ──────────────────────────────────────────────────────── */}
       <section className="container-page py-20 md:py-28">

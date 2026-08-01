@@ -25,13 +25,16 @@ export function BillingCheckout({
   plan,
   paymentsConfigured,
   phoneVerified = true,
+  phoneVerificationRequired = false,
   accessToken,
   successHref = "/dashboard/subscription"
 }: {
   plan: PlanOption | null;
   paymentsConfigured: boolean;
-  /** Whether the member's mobile is already verified. Paid plans require it. */
+  /** Whether the member's mobile is already verified. */
   phoneVerified?: boolean;
+  /** Whether paid checkout is gated on mobile verification (feature-flagged). */
+  phoneVerificationRequired?: boolean;
   /** Present for private/special plans — forwarded to the server for gating. */
   accessToken?: string;
   successHref?: string;
@@ -49,8 +52,9 @@ export function BillingCheckout({
   const [coupon, setCoupon] = useState<{ code: string; discountPaise: number; finalPaise: number } | null>(
     null
   );
-  // Phone verification (paid plans only). Starts from the server-provided flag.
-  const [phoneOk, setPhoneOk] = useState(phoneVerified);
+  // Phone verification (paid plans only, feature-flagged). When the gate is
+  // disabled we treat the member as cleared so checkout proceeds normally.
+  const [phoneOk, setPhoneOk] = useState(phoneVerified || !phoneVerificationRequired);
   const [phoneStep, setPhoneStep] = useState<"idle" | "sent">("idle");
   const [phoneOtp, setPhoneOtp] = useState("");
   const [phoneBusy, setPhoneBusy] = useState(false);
@@ -321,8 +325,9 @@ export function BillingCheckout({
         </div>
       )}
 
-      {/* Phone verification — required once, before a paid purchase. */}
-      {!isFree && paymentsConfigured && !phoneOk && (
+      {/* Phone verification — shown only when the feature is enabled and the
+          member isn't yet verified. Disabled by default (pending DLT). */}
+      {!isFree && paymentsConfigured && phoneVerificationRequired && !phoneOk && (
         <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-3">
           <p className="text-sm font-medium">Verify your mobile number</p>
           <p className="mt-0.5 text-xs text-muted">

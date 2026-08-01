@@ -20,7 +20,14 @@ async function reply(chatId: number, title: string, body: string): Promise<void>
 
 export async function POST(request: Request): Promise<NextResponse> {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  if (secret && request.headers.get("x-telegram-bot-api-secret-token") !== secret) {
+  if (!secret) {
+    // Fail closed in production: without the shared secret we cannot tell a real
+    // Telegram callback from a spoofed one, so reject rather than act on it.
+    if (process.env.NODE_ENV === "production") {
+      console.error("[telegram] TELEGRAM_WEBHOOK_SECRET is not configured — refusing");
+      return NextResponse.json({ ok: false }, { status: 503 });
+    }
+  } else if (request.headers.get("x-telegram-bot-api-secret-token") !== secret) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 

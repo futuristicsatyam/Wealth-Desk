@@ -58,6 +58,21 @@ export const resetPasswordSchema = z
     path: ["confirmPassword"]
   });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password"),
+    password: passwordField,
+    confirmPassword: z.string()
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"]
+  })
+  .refine((data) => data.password !== data.currentPassword, {
+    message: "New password must be different from your current password",
+    path: ["password"]
+  });
+
 export const tradeInputSchema = z
   .object({
     // Attribution is optional - a trade may be published without an analyst.
@@ -226,6 +241,26 @@ export const couponSchema = z
 
 export const redeemPlanSchema = z.object({
   accessToken: z.string().trim().min(8).max(128)
+});
+
+export const reviewSchema = z.object({
+  authorName: z.string().trim().min(2, "Name is too short").max(80),
+  // Neutral context only (e.g. "Member since 2025"); never a returns claim.
+  authorRole: z.string().trim().max(80).optional(),
+  quote: z.string().trim().min(10, "Feedback is too short").max(400),
+  // Optional 1-5 SERVICE rating.
+  rating: z.number().int().min(1).max(5).optional(),
+  sortOrder: z.number().int().min(0).max(9999).default(0),
+  isPublished: z.boolean().default(false)
+});
+
+// Member-submitted review (from the dashboard). The display name comes from the
+// member's account server-side; they only provide the feedback, optional
+// context and an optional service rating. Always lands pending admin review.
+export const reviewSubmitSchema = z.object({
+  quote: z.string().trim().min(10, "Please write a little more").max(400),
+  authorRole: z.string().trim().max(80).optional(),
+  rating: z.number().int().min(1).max(5).optional()
 });
 
 export const verifyPaymentSchema = z.object({

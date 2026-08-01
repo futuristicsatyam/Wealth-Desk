@@ -20,11 +20,12 @@ export type ActionState = { status: "idle" | "error" | "success"; message: strin
 
 async function clientIp(): Promise<string> {
   const headerList = await headers();
-  return (
-    headerList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    headerList.get("x-real-ip") ||
-    "unknown"
-  );
+  // Prefer the platform-set `x-real-ip` (not client-forgeable through the edge);
+  // fall back to the first `x-forwarded-for` entry only when it's absent.
+  const realIp = headerList.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+  const xff = headerList.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return xff || "unknown";
 }
 
 /** Signs in with credentials and redirects to the requested in-app path. */
@@ -100,6 +101,16 @@ export async function registerAction(_prev: ActionState, formData: FormData): Pr
   }
 
   const data = parsed.data;
+
+  // Gate everything below behind a VALID email OTP (non-consuming check). The
+  // code was mailed to data.email, so only someone who controls that inbox can
+  // pass — this stops the "already exists" response from being used as an
+  // account-enumeration oracle by someone probing an email they don't own. The
+  // code is consumed (burned) only on the success path further down.
+  const otpPre = await checkEmailOtp(data.email, otp, false);
+  if (!otpPre.ok) {
+    return { status: "error", message: otpPre.message };
+  }
 
   const panHash = blindIndex(data.panNumber);
   const aadhaarHash = blindIndex(data.aadhaarNumber);

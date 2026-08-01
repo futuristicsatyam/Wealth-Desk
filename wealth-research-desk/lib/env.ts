@@ -14,7 +14,12 @@ const schema = z.object({
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
   PHONE_OTP_SECRET: z.string().optional(),
+  // Gate paid checkout on mobile-OTP verification. Disabled by default because
+  // A2P SMS to India needs DLT registration we don't have yet. Set to "true"
+  // (with Twilio/gateway + DLT configured) to re-enable — no code change needed.
+  PHONE_VERIFICATION_ENABLED: z.string().optional(),
   PII_ENCRYPTION_KEY: z.string().optional(),
+  PII_ENCRYPTION_KEY_PREVIOUS: z.string().optional(),
   APP_NAME: z.string().default("Wealth Research Desk"),
   SEBI_REGISTRATION: z.string().default("INH000000000"),
   GSTIN: z.string().default("27AAAAA0000A1Z5"),
@@ -30,3 +35,6 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export const APP_URL = env.APP_URL.replace(/\/$/, "");
+
+/** Whether paid checkout requires a verified mobile number (see note above). */
+export const PHONE_VERIFICATION_ENABLED = env.PHONE_VERIFICATION_ENABLED === "true";

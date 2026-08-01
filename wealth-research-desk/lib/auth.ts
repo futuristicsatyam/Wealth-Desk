@@ -10,6 +10,11 @@ const credentialsSchema = z.object({
   password: z.string().min(8)
 });
 
+// A fixed bcrypt hash (of a random string) compared against on the user-not-found
+// / banned path, so authorize() spends ~the same time whether or not the email
+// exists. Prevents distinguishing valid accounts by response timing.
+const DUMMY_BCRYPT_HASH = "$2a$12$SKWmg8sjUw5CYEOMNhWc4O/Nv.pZxHpcVDQ.rEznHUvmN72ibc/Jy";
+
 // Supports zero-downtime secret rotation.
 const secrets = [env.AUTH_SECRET, env.AUTH_SECRET_PREVIOUS]
   .filter((value): value is string => Boolean(value && value.trim()));
@@ -33,10 +38,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email.toLowerCase() }
         });
-        if (!user || user.isBanned) return null;
 
-        const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
-        if (!valid) return null;
+        // Always run a bcrypt comparison — against the real hash when the user
+        // exists, otherwise against a fixed dummy hash — so response timing does
+        // not reveal whether an email is registered (user enumeration).
+        const valid = await bcrypt.compare(
+          parsed.data.password,
+          user?.passwordHash ?? DUMMY_BCRYPT_HASH
+        );
+        if (!user || user.isBanned || !valid) return null;
 
         return {
           id: user.id,

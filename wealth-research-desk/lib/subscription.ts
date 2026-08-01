@@ -270,5 +270,12 @@ export async function grantSubscriptionFromPayment(params: {
     }
 
     return { granted: true };
+  }, {
+    // This is the money path: a captured payment must reliably become a granted
+    // subscription. Give it a generous ceiling (well above the default 5s) so a
+    // transient slow-DB moment can never abort the grant and leave a paid member
+    // without access. maxWait covers waiting for a pooled connection.
+    timeout: 20000,
+    maxWait: 10000
   });
 }

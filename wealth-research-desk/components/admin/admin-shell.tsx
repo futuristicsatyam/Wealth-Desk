@@ -18,6 +18,7 @@ import {
   LifeBuoy,
   FileText,
   ScrollText,
+  Star,
   Menu,
   ArrowLeft
 } from "lucide-react";
@@ -39,6 +40,7 @@ const ICONS = {
   notifications: Megaphone,
   support: LifeBuoy,
   content: FileText,
+  reviews: Star,
   audit: ScrollText
 } as const;
 
@@ -57,6 +59,7 @@ const NAV: Array<{ label: string; href: string; icon: keyof typeof ICONS }> = [
   { label: "Broadcasts", href: "/admin/notifications", icon: "notifications" },
   { label: "Support", href: "/admin/support", icon: "support" },
   { label: "Content", href: "/admin/content", icon: "content" },
+  { label: "Reviews", href: "/admin/reviews", icon: "reviews" },
   { label: "Audit Log", href: "/admin/audit", icon: "audit" }
 ];
 
