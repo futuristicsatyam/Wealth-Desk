@@ -79,6 +79,11 @@ enum OutboundStatus {
   FAILED
 }
 
+enum VideoProvider {
+  YOUTUBE
+  INSTAGRAM
+}
+
 model User {
   id              String    @id @default(cuid())
   name            String
@@ -119,6 +124,7 @@ model User {
   trialUsage     TrialUsage?
   resetTokens    PasswordResetToken[]
   review         Review?
+  videoTestimonial VideoTestimonial?
 
   referredBy     User?            @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
   referrals      User[]           @relation("UserReferrals")
@@ -510,6 +516,30 @@ model Review {
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([isPublished, sortOrder])
+}
+
+model VideoTestimonial {
+  id          String        @id @default(cuid())
+  // Set for member-submitted reels (one per member); null for admin-authored
+  // ones. A submission is unpublished until an admin verifies it.
+  userId      String?       @unique
+  submittedBy User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName  String
+  // Neutral context only, e.g. "Member since 2025". Never a returns/profit claim.
+  authorRole  String?
+  provider    VideoProvider
+  // The original link the member/admin pasted (kept for reference/audit).
+  sourceUrl   String
+  // Canonical embed URL derived from sourceUrl by our parser; host is fixed by
+  // us (YouTube/Instagram only), never taken raw from user input.
+  embedUrl    String
+  // Verified & shown on the home page. Member submissions start false (pending).
+  isPublished Boolean       @default(false)
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   @@index([isPublished, sortOrder])
 }

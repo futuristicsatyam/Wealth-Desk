@@ -53,7 +53,8 @@ function buildCsp(nonce: string): string {
     scriptSrc,
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
-    "frame-src https://api.razorpay.com https://checkout.razorpay.com",
+    // Razorpay checkout + embedded video reels (YouTube / Instagram testimonials).
+    "frame-src https://api.razorpay.com https://checkout.razorpay.com https://www.youtube.com https://www.youtube-nocookie.com https://www.instagram.com",
     connectSrc,
     "base-uri 'self'",
     "form-action 'self'",

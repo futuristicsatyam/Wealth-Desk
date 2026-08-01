@@ -14,6 +14,7 @@ import {
   Wallet,
   LifeBuoy,
   Settings,
+  Star,
   Shield,
   Menu,
   X,
@@ -32,6 +33,7 @@ const ICONS = {
   subscription: CreditCard,
   billing: Wallet,
   support: LifeBuoy,
+  reviews: Star,
   settings: Settings,
   admin: Shield
 } as const;

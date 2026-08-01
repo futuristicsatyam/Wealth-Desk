@@ -11,6 +11,7 @@ const BASE_NAV: NavItem[] = [
   { label: "Subscription", href: "/dashboard/subscription", icon: "subscription" },
   { label: "Billing", href: "/dashboard/billing", icon: "billing" },
   { label: "Support", href: "/dashboard/support", icon: "support" },
+  { label: "Reviews", href: "/dashboard/reviews", icon: "reviews" },
   { label: "Settings", href: "/dashboard/settings", icon: "settings" }
 ];
 

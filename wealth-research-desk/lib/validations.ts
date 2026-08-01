@@ -263,6 +263,24 @@ export const reviewSubmitSchema = z.object({
   rating: z.number().int().min(1).max(5).optional()
 });
 
+// Admin-managed video reel. `sourceUrl` is a YouTube/Instagram link; the
+// provider + canonical embed URL are derived server-side by parseVideoUrl().
+export const videoTestimonialSchema = z.object({
+  authorName: z.string().trim().min(2, "Name is too short").max(80),
+  authorRole: z.string().trim().max(80).optional(),
+  sourceUrl: z.string().trim().url("Enter a valid YouTube or Instagram link").max(500),
+  sortOrder: z.number().int().min(0).max(9999).default(0),
+  isPublished: z.boolean().default(false)
+});
+
+// Member-submitted video reel (from the dashboard). Display name comes from the
+// member's account server-side; they only provide the link and optional context.
+// Always lands pending admin review.
+export const videoTestimonialSubmitSchema = z.object({
+  sourceUrl: z.string().trim().url("Enter a valid YouTube or Instagram link").max(500),
+  authorRole: z.string().trim().max(80).optional()
+});
+
 export const verifyPaymentSchema = z.object({
   razorpay_order_id: z.string().min(1),
   razorpay_payment_id: z.string().min(1),

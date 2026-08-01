@@ -20,10 +20,12 @@ import {
   planSchema,
   couponSchema,
   reviewSchema,
+  videoTestimonialSchema,
   broadcastSchema,
   managedContentSchema,
   firstError
 } from "@/lib/validations";
+import { parseVideoUrl } from "@/lib/video-embed";
 
 export type ActionState = { status: "idle" | "error" | "success"; message: string };
 
@@ -908,6 +910,95 @@ export async function deleteReviewAction(formData: FormData): Promise<void> {
     entity: "Review",
     entityId: reviewId,
     summary: `Deleted review by ${review.authorName}`,
+    ipAddress: await clientIp()
+  });
+  revalidatePath("/admin/reviews");
+  revalidatePath("/");
+}
+
+/* ------------------------- Video testimonials ------------------------- */
+
+export async function createVideoTestimonialAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const admin = await requireAdmin();
+
+  const parsed = videoTestimonialSchema.safeParse({
+    authorName: formData.get("authorName"),
+    authorRole: formData.get("authorRole") || undefined,
+    sourceUrl: formData.get("sourceUrl"),
+    sortOrder: num(formData.get("sortOrder")) || 0,
+    isPublished: formData.get("isPublished") === "on"
+  });
+  if (!parsed.success) return { status: "error", message: firstError(parsed.error) };
+
+  const video = parseVideoUrl(parsed.data.sourceUrl);
+  if (!video) {
+    return { status: "error", message: "Unsupported link. Use a YouTube or Instagram video/reel URL." };
+  }
+
+  const created = await prisma.videoTestimonial.create({
+    data: {
+      authorName: parsed.data.authorName,
+      authorRole: parsed.data.authorRole ?? null,
+      provider: video.provider,
+      sourceUrl: video.sourceUrl,
+      embedUrl: video.embedUrl,
+      sortOrder: parsed.data.sortOrder,
+      isPublished: parsed.data.isPublished
+    }
+  });
+  await logAudit({
+    actorId: admin.id,
+    actorName: admin.name,
+    action: "VIDEO_TESTIMONIAL_CREATED",
+    entity: "VideoTestimonial",
+    entityId: created.id,
+    summary: `Added video reel by ${created.authorName}`,
+    ipAddress: await clientIp()
+  });
+  revalidatePath("/admin/reviews");
+  revalidatePath("/");
+  return { status: "success", message: "Video reel added" };
+}
+
+export async function toggleVideoTestimonialPublishedAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const id = String(formData.get("videoId") ?? "").trim();
+  if (!id) return;
+  const video = await prisma.videoTestimonial.findUnique({ where: { id } });
+  if (!video) return;
+
+  await prisma.videoTestimonial.update({ where: { id }, data: { isPublished: !video.isPublished } });
+  await logAudit({
+    actorId: admin.id,
+    actorName: admin.name,
+    action: "VIDEO_TESTIMONIAL_TOGGLED",
+    entity: "VideoTestimonial",
+    entityId: id,
+    summary: `${video.isPublished ? "Unpublished" : "Published"} video reel by ${video.authorName}`,
+    ipAddress: await clientIp()
+  });
+  revalidatePath("/admin/reviews");
+  revalidatePath("/");
+}
+
+export async function deleteVideoTestimonialAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const id = String(formData.get("videoId") ?? "").trim();
+  if (!id) return;
+  const video = await prisma.videoTestimonial.findUnique({ where: { id } });
+  if (!video) return;
+
+  await prisma.videoTestimonial.delete({ where: { id } });
+  await logAudit({
+    actorId: admin.id,
+    actorName: admin.name,
+    action: "VIDEO_TESTIMONIAL_DELETED",
+    entity: "VideoTestimonial",
+    entityId: id,
+    summary: `Deleted video reel by ${video.authorName}`,
     ipAddress: await clientIp()
   });
   revalidatePath("/admin/reviews");

@@ -9,7 +9,14 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/audit";
-import { supportTicketSchema, changePasswordSchema, reviewSubmitSchema, firstError } from "@/lib/validations";
+import {
+  supportTicketSchema,
+  changePasswordSchema,
+  reviewSubmitSchema,
+  videoTestimonialSubmitSchema,
+  firstError
+} from "@/lib/validations";
+import { parseVideoUrl } from "@/lib/video-embed";
 import { telegramConnectLink } from "@/lib/telegram";
 
 export type ActionState = { status: "idle" | "error" | "success"; message: string };
@@ -190,11 +197,64 @@ export async function submitReviewAction(
     }
   });
 
-  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/reviews");
   revalidatePath("/admin/reviews");
   revalidatePath("/");
   return {
     status: "success",
     message: "Thanks! Your review was submitted and will appear once our team approves it."
+  };
+}
+
+export async function submitVideoTestimonialAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser();
+
+  const parsed = videoTestimonialSubmitSchema.safeParse({
+    sourceUrl: formData.get("sourceUrl"),
+    authorRole: formData.get("authorRole") || undefined
+  });
+  if (!parsed.success) {
+    return { status: "error", message: firstError(parsed.error) };
+  }
+
+  const video = parseVideoUrl(parsed.data.sourceUrl);
+  if (!video) {
+    return {
+      status: "error",
+      message: "Unsupported link. Paste a YouTube or Instagram video/reel URL."
+    };
+  }
+
+  await prisma.videoTestimonial.upsert({
+    where: { userId: user.id },
+    create: {
+      userId: user.id,
+      authorName: user.name,
+      authorRole: parsed.data.authorRole ?? null,
+      provider: video.provider,
+      sourceUrl: video.sourceUrl,
+      embedUrl: video.embedUrl,
+      isPublished: false
+    },
+    update: {
+      authorName: user.name,
+      authorRole: parsed.data.authorRole ?? null,
+      provider: video.provider,
+      sourceUrl: video.sourceUrl,
+      embedUrl: video.embedUrl,
+      // Any edit re-enters the verification queue.
+      isPublished: false
+    }
+  });
+
+  revalidatePath("/dashboard/reviews");
+  revalidatePath("/admin/reviews");
+  revalidatePath("/");
+  return {
+    status: "success",
+    message: "Thanks! Your video reel was submitted and will appear once our team approves it."
   };
 }

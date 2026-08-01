@@ -1,5 +1,5 @@
-import { Quote, Star } from "lucide-react";
-import { Reveal, Stagger, StaggerItem } from "@/components/motion/reveal";
+import { Reveal } from "@/components/motion/reveal";
+import { TestimonialsCarousel } from "@/components/marketing/testimonials-carousel";
 
 type Review = {
   id: string;
@@ -13,7 +13,8 @@ type Review = {
  * Member service-feedback section for the home page. Deliberately frames these
  * as experience-of-the-service feedback — no returns/performance claims — to
  * stay within SEBI's advertisement code. Renders nothing when there are no
- * published reviews, so the section never shows empty.
+ * published reviews, so the section never shows empty. Cards live in a
+ * horizontally scrollable carousel so the section scales to many reviews.
  */
 export function Testimonials({ reviews }: { reviews: Review[] }) {
   if (reviews.length === 0) return null;
@@ -30,32 +31,7 @@ export function Testimonials({ reviews }: { reviews: Review[] }) {
         </p>
       </Reveal>
 
-      <Stagger className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {reviews.map((review) => (
-          <StaggerItem
-            key={review.id}
-            className="relative flex flex-col rounded-2xl border border-border bg-card p-6 transition-colors duration-200 hover:border-border-strong"
-          >
-            <Quote size={20} className="text-accent/40" aria-hidden />
-            {review.rating != null && (
-              <div className="mt-3 flex gap-0.5" aria-label={`${review.rating} out of 5`}>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star
-                    key={i}
-                    size={14}
-                    className={i < review.rating! ? "fill-accent text-accent" : "text-border-strong"}
-                  />
-                ))}
-              </div>
-            )}
-            <p className="mt-3 flex-1 text-sm leading-relaxed text-foreground/90">“{review.quote}”</p>
-            <div className="mt-5 border-t border-border pt-4">
-              <p className="text-sm font-semibold">{review.authorName}</p>
-              {review.authorRole && <p className="text-xs text-muted">{review.authorRole}</p>}
-            </div>
-          </StaggerItem>
-        ))}
-      </Stagger>
+      <TestimonialsCarousel reviews={reviews} />
     </section>
   );
 }

@@ -1,18 +1,12 @@
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChangePasswordForm } from "@/components/dashboard/change-password-form";
-import { ReviewSubmitForm } from "@/components/dashboard/review-submit-form";
 import { requireUser } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const myReview = await prisma.review.findUnique({
-    where: { userId: user.id },
-    select: { quote: true, authorRole: true, rating: true, isPublished: true }
-  });
 
   return (
     <div className="space-y-6">
@@ -59,16 +53,6 @@ export default async function SettingsPage() {
           <ChangePasswordForm />
         </Card>
       </div>
-
-      <Card className="space-y-4">
-        <div>
-          <CardTitle>Share your experience</CardTitle>
-          <p className="mt-1 text-sm text-muted">
-            Tell us how the research desk has worked for you. Approved reviews appear on our home page.
-          </p>
-        </div>
-        <ReviewSubmitForm existing={myReview} />
-      </Card>
     </div>
   );
 }
