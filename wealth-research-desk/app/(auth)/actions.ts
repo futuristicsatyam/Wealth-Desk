@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { headers } from "next/headers";
 import bcrypt from "bcryptjs";
 import { AuthError } from "next-auth";
@@ -216,28 +217,39 @@ export async function requestPasswordResetAction(
 
   const user = await prisma.user.findUnique({ where: { email }, select: { id: true, name: true } });
   if (user) {
-    const token = await createPasswordResetToken(user.id);
-    const resetUrl = `${APP_URL}/reset-password?token=${token}`;
-    await logAudit({
-      actorId: user.id,
-      actorName: user.name,
-      action: "PASSWORD_RESET_REQUESTED",
-      entity: "User",
-      entityId: user.id,
-      summary: `Password reset requested for ${user.name}`,
-      ipAddress: ip
-    });
-    await sendEmail({
-      to: email,
-      subject: "Reset your Research Wealth Desk password",
-      html: emailLayout(
-        "Password reset request",
-        `<p>Hello ${escapeHtml(user.name)},</p>
-         <p>We received a request to reset your password. This link is valid for 2 hours:</p>
-         <p><a href="${resetUrl}" style="color:#8d7042">Reset my password</a></p>
-         <p>If you did not request this, you can safely ignore this email.</p>`
-      )
-    });
+    // Per-email cap so nobody can flood one inbox by rotating IPs. Enumeration-
+    // neutral: the response below is identical whether or not this fires.
+    const emailLimit = await consumeRateLimit(`pwreset-email:${email}`, 3, 60 * 60 * 1000);
+    if (emailLimit.allowed) {
+      // Defer token creation + email to after the response is sent. This keeps
+      // the response time uniform for existing vs non-existing emails (closing
+      // a timing-based user-enumeration side channel) and makes the request feel
+      // instant to the user.
+      after(async () => {
+        const token = await createPasswordResetToken(user.id);
+        const resetUrl = `${APP_URL}/reset-password?token=${token}`;
+        await logAudit({
+          actorId: user.id,
+          actorName: user.name,
+          action: "PASSWORD_RESET_REQUESTED",
+          entity: "User",
+          entityId: user.id,
+          summary: `Password reset requested for ${user.name}`,
+          ipAddress: ip
+        });
+        await sendEmail({
+          to: email,
+          subject: "Reset your Research Wealth Desk password",
+          html: emailLayout(
+            "Password reset request",
+            `<p>Hello ${escapeHtml(user.name)},</p>
+             <p>We received a request to reset your password. This link is valid for 2 hours:</p>
+             <p><a href="${resetUrl}" style="color:#8d7042">Reset my password</a></p>
+             <p>If you did not request this, you can safely ignore this email.</p>`
+          )
+        });
+      });
+    }
   }
 
   return { status: "success", message: genericMessage };
