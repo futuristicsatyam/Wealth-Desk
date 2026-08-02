@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Why Wealth Research Desk exists, what we stand for, and how our SEBI-registered research desk is different from tip services."
+    "Why Research Wealth Desk exists, what we stand for, and how our SEBI-registered research desk is different from tip services."
 };
 
 const VALUES = [
@@ -46,7 +46,7 @@ const DIFFERENTIATORS = [
 // Prose kept as string constants (not JSX text) so quotes/apostrophes don't
 // trip react/no-unescaped-entities at build time.
 const ORIGIN_1 =
-  'We started Wealth Research Desk because we were tired of what passes for "advice" in the Indian markets - anonymous Telegram calls, screenshots of only the winning trades, and confident promises that quietly disappear when they’re wrong. We had spent years on the research side of the desk, and we knew traders deserved better than hype.';
+  'We started Research Wealth Desk because we were tired of what passes for "advice" in the Indian markets - anonymous Telegram calls, screenshots of only the winning trades, and confident promises that quietly disappear when they’re wrong. We had spent years on the research side of the desk, and we knew traders deserved better than hype.';
 const ORIGIN_2 =
   'So we built the desk we wished existed: one where every call is written down with its reasoning and its risk, where losing trades stay on the record, and where the member - not the "guru" - makes the final decision. That’s the whole idea. No shortcuts, no guarantees, just honest research you can actually reason about.';
 const DIFF_INTRO =
@@ -63,7 +63,7 @@ export default function AboutPage() {
         A research desk
       </h1>
       <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted">
-        Wealth Research Desk publishes structured, risk-managed research for Indian equity and
+        Research Wealth Desk publishes structured, risk-managed research for Indian equity and
         derivatives markets. We exist to help independent traders make better-informed decisions -
         we never execute trades, handle client money, or promise returns. Every idea is documented
         with a clear rationale and an explicit risk rating.
@@ -131,7 +131,7 @@ export default function AboutPage() {
           </div>
         </Card>
         <p className="mt-4 text-xs text-muted">
-          Investments in securities markets are subject to risk. Wealth Research Desk provides
+          Investments in securities markets are subject to risk. Research Wealth Desk provides
           research and educational content only and does not guarantee returns.
         </p>
       </section>

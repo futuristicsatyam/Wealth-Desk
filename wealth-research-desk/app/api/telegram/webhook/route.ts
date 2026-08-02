@@ -57,7 +57,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (startMatch) {
     const linkToken = startMatch[1];
     if (!linkToken) {
-      await reply(chatId, "Wealth Research Desk", "To receive trade alerts here, open your dashboard and tap “Connect Telegram” — that link binds this chat to your account.");
+      await reply(chatId, "Research Wealth Desk", "To receive trade alerts here, open your dashboard and tap “Connect Telegram” — that link binds this chat to your account.");
       return NextResponse.json({ ok: true });
     }
 

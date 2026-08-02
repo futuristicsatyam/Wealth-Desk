@@ -24,19 +24,19 @@ const fontMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
   title: {
-    default: "Wealth Research Desk | Institutional-Grade F&O Research",
-    template: "%s | Wealth Research Desk"
+    default: "Research Wealth Desk | Institutional-Grade F&O Research",
+    template: "%s | Research Wealth Desk"
   },
   description:
     "Premium Indian market research platform delivering risk-managed F&O and equity setups from SEBI-registered analysts.",
-  applicationName: "Wealth Research Desk",
+  applicationName: "Research Wealth Desk",
   openGraph: {
-    title: "Wealth Research Desk",
+    title: "Research Wealth Desk",
     description: "Institutional-grade research, market outlooks and risk-managed trade intelligence.",
     type: "website",
     url: APP_URL
   },
-  twitter: { card: "summary_large_image", title: "Wealth Research Desk" },
+  twitter: { card: "summary_large_image", title: "Research Wealth Desk" },
   robots: { index: true, follow: true }
 };
 

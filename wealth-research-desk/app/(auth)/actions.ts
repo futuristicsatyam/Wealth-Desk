@@ -229,7 +229,7 @@ export async function requestPasswordResetAction(
     });
     await sendEmail({
       to: email,
-      subject: "Reset your Wealth Research Desk password",
+      subject: "Reset your Research Wealth Desk password",
       html: emailLayout(
         "Password reset request",
         `<p>Hello ${escapeHtml(user.name)},</p>

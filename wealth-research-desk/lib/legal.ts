@@ -28,7 +28,7 @@ export function buildLegalDocs(trialDays: number): Record<LegalSlug, LegalDoc> {
     title: LEGAL_TITLES.disclaimer,
     body: [
       "Investments in securities markets are subject to market risks. Trading in leveraged products such as Futures & Options can result in losses that exceed the initial capital deployed.",
-      "Wealth Research Desk publishes research, analysis and educational trade ideas prepared by SEBI-registered research analysts. We do NOT execute trades on behalf of members, manage client funds, or provide portfolio management services.",
+      "Research Wealth Desk publishes research, analysis and educational trade ideas prepared by SEBI-registered research analysts. We do NOT execute trades on behalf of members, manage client funds, or provide portfolio management services.",
       "No content on this platform should be interpreted as a guarantee, assurance or projection of profit. Past performance is not indicative of future results. Members must take independent decisions in their own broker accounts and should consult a qualified financial adviser where appropriate.",
       "Performance information, where shown, is presented for transparency in points or outcomes and does not represent realised returns on any specific capital base."
     ].join("\n\n")
@@ -49,8 +49,8 @@ export function buildLegalDocs(trialDays: number): Record<LegalSlug, LegalDoc> {
     slug: "terms",
     title: LEGAL_TITLES.terms,
     body: [
-      "By creating an account you agree to use Wealth Research Desk for personal, non-commercial research purposes only. Membership is individual and non-transferable.",
-      "Research content is the intellectual property of Wealth Research Desk. Redistribution, resale or public sharing of trade ideas, outlooks or alerts is prohibited.",
+      "By creating an account you agree to use Research Wealth Desk for personal, non-commercial research purposes only. Membership is individual and non-transferable.",
+      "Research content is the intellectual property of Research Wealth Desk. Redistribution, resale or public sharing of trade ideas, outlooks or alerts is prohibited.",
       `Subscriptions are time-bound and renew only when you initiate a new payment unless an explicit auto-renewal is configured. The one-time ${trialDays}-day trial is available once per verified user.`,
       "We may suspend accounts that violate these terms or applicable regulations."
     ].join("\n\n")

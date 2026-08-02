@@ -20,10 +20,10 @@ const schema = z.object({
   PHONE_VERIFICATION_ENABLED: z.string().optional(),
   PII_ENCRYPTION_KEY: z.string().optional(),
   PII_ENCRYPTION_KEY_PREVIOUS: z.string().optional(),
-  APP_NAME: z.string().default("Wealth Research Desk"),
+  APP_NAME: z.string().default("Research Wealth Desk"),
   SEBI_REGISTRATION: z.string().default("INH000000000"),
   GSTIN: z.string().default("27AAAAA0000A1Z5"),
-  SUPPORT_EMAIL: z.string().default("support@wealthdesk.in")
+  SUPPORT_EMAIL: z.string().default("connect@researchwealthdesk.com")
 });
 
 const parsed = schema.safeParse(process.env);

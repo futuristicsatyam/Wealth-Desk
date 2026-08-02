@@ -19,7 +19,7 @@ export async function sendOtpSms(params: { to: string; code: string }): Promise<
     return { sent: false, skipped: true, error: "Twilio not configured" };
   }
 
-  const body = `Your Wealth Research Desk verification code is ${params.code}. It expires in 10 minutes.`;
+  const body = `Your Research Wealth Desk verification code is ${params.code}. It expires in 10 minutes.`;
 
   try {
     const response = await fetch(

@@ -4,7 +4,7 @@ import { escapeHtml } from "@/lib/html";
 type SendEmailResult = { sent: boolean; skipped?: boolean; error?: string };
 
 function fromAddress(): string {
-  return process.env.RESEND_FROM || process.env.SMTP_FROM || "research@wealthdesk.in";
+  return process.env.RESEND_FROM || process.env.SMTP_FROM || "no-reply@researchwealthdesk.com";
 }
 
 function getTransport() {
@@ -107,7 +107,7 @@ export function emailLayout(headline: string, bodyHtml: string): string {
     <h2 style="color:#8d7042">${escapeHtml(headline)}</h2>
     ${bodyHtml}
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0" />
-    <p style="font-size:12px;color:#6b7280">Wealth Research Desk - market investments are subject to risk.
+    <p style="font-size:12px;color:#6b7280">Research Wealth Desk - market investments are subject to risk.
     Research is educational and not a guarantee of returns.</p>
   </div>`;
 }

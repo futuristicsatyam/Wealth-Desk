@@ -6,7 +6,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <header className="border-b border-border">
         <div className="container-page flex h-16 items-center">
           <Link href="/" className="text-sm font-semibold tracking-[0.18em] text-gradient">
-            WEALTH RESEARCH DESK
+            RESEARCH WEALTH DESK
           </Link>
         </div>
       </header>

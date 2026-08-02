@@ -4,7 +4,7 @@ import { getTrialPlanInfo } from "@/lib/plans";
 
 export const metadata: Metadata = {
   title: "FAQ",
-  description: "Frequently asked questions about Wealth Research Desk membership and research."
+  description: "Frequently asked questions about Research Wealth Desk membership and research."
 };
 
 export const dynamic = "force-dynamic";

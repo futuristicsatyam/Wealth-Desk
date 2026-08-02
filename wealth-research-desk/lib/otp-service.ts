@@ -120,7 +120,7 @@ export async function sendEmailOtp(rawEmail: string): Promise<SendResult> {
 
   const mail = await sendEmail({
     to: email,
-    subject: "Your Wealth Research Desk verification code",
+    subject: "Your Research Wealth Desk verification code",
     html: emailLayout(
       "Verify your email",
       `<p>Your verification code is:</p>

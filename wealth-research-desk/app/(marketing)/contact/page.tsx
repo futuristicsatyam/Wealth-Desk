@@ -4,11 +4,11 @@ import { Mail, MessageSquare } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Contact",
-  description: "Get in touch with the Wealth Research Desk team."
+  description: "Get in touch with the Research Wealth Desk team."
 };
 
 export default function ContactPage() {
-  const supportEmail = process.env.SUPPORT_EMAIL || "support@wealthdesk.in";
+  const supportEmail = process.env.SUPPORT_EMAIL || "connect@researchwealthdesk.com";
   // const sebi = process.env.SEBI_REGISTRATION || "INH000000000";
 
   return (

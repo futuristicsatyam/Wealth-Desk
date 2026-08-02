@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 
 export const metadata: Metadata = {
   title: "Membership",
-  description: "Membership plans for Wealth Research Desk - trial and paid options with GST invoices."
+  description: "Membership plans for Research Wealth Desk - trial and paid options with GST invoices."
 };
 
 export const dynamic = "force-dynamic";

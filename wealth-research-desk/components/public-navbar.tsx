@@ -26,7 +26,7 @@ export function PublicNavbar({ isAuthenticated }: { isAuthenticated: boolean }) 
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
       <div className="container-page flex h-16 items-center justify-between">
         <Link href="/" className="text-sm font-semibold tracking-[0.18em] text-gradient">
-          WEALTH RESEARCH DESK
+          RESEARCH WEALTH DESK
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">

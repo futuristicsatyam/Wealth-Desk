@@ -224,7 +224,7 @@ export function BillingCheckout({
         key: orderData.keyId,
         amount: orderData.amount,
         currency: orderData.currency,
-        name: "Wealth Research Desk",
+        name: "Research Wealth Desk",
         description: orderData.planName,
         order_id: orderData.orderId,
         prefill: {

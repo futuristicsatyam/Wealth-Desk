@@ -64,7 +64,7 @@ export default async function HomePage() {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "FinancialService",
-    name: "Wealth Research Desk",
+    name: "Research Wealth Desk",
     url: APP_URL,
     areaServed: "IN",
     serviceType: "Stock Market Research",
@@ -74,7 +74,7 @@ export default async function HomePage() {
   const stats = [
     { label: "Live setups", value: activeTrades, hint: "Currently open for tracking" },
     { label: "Closed trades", value: closedTrades, hint: "Published with outcomes" },
-    { label: "Active Users", value: activeUsers, hint: "Users Generating Wealth with Wealth Research Desk" }
+    { label: "Active Users", value: activeUsers, hint: "Users Generating Wealth with Research Wealth Desk" }
   ];
 
   return (
@@ -88,7 +88,7 @@ export default async function HomePage() {
         <div className="container-page relative z-10 grid items-center gap-10 py-14 sm:gap-12 sm:py-20 lg:grid-cols-2 lg:py-28">
           <div className="text-center lg:text-left">
             <Badge tone="accent" live>
-              Wealth Research Desk
+              Research Wealth Desk
             </Badge>
             <h1 className="mt-5 max-w-xl text-[26px] font-semibold leading-[1.15] tracking-tight sm:text-4xl md:text-6xl mx-auto lg:mx-0">
               Institutional-grade{" "}

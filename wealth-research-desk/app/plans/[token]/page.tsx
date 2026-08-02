@@ -17,7 +17,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
       <div className="w-full max-w-lg space-y-6">
         <div className="text-center">
-          <p className="text-xs font-semibold tracking-[0.18em] text-accent">WEALTH RESEARCH DESK</p>
+          <p className="text-xs font-semibold tracking-[0.18em] text-accent">RESEARCH WEALTH DESK</p>
           <p className="mt-1 text-sm text-muted">Private plan invitation</p>
         </div>
         {children}

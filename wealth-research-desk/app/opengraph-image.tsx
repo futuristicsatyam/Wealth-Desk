@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 
 // Branded social share card (Open Graph + Twitter). Rendered by next/og at
 // build/request time — self-contained, no external assets.
-export const alt = "Wealth Research Desk — Institutional-grade Indian market research";
+export const alt = "Research Wealth Desk — Institutional-grade Indian market research";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -41,7 +41,7 @@ export default function OpengraphImage() {
             W
           </div>
           <div style={{ fontSize: "26px", letterSpacing: "6px", color: "#8B5CF6", textTransform: "uppercase" }}>
-            Wealth Research Desk
+            Research Wealth Desk
           </div>
         </div>
         <div style={{ marginTop: "44px", fontSize: "68px", fontWeight: 700, lineHeight: 1.1, maxWidth: "900px" }}>

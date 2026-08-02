@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "Performance",
-  description: "Transparent, aggregate closed-trade performance from Wealth Research Desk."
+  description: "Transparent, aggregate closed-trade performance from Research Wealth Desk."
 };
 
 export const dynamic = "force-dynamic";

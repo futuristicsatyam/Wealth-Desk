@@ -58,7 +58,7 @@ export function DashboardShell({
     <div className="flex h-full flex-col">
       <div className="px-4 py-5">
         <Link href="/" className="text-sm font-semibold tracking-[0.16em] text-gradient">
-          WEALTH RESEARCH DESK
+          RESEARCH WEALTH DESK
         </Link>
       </div>
       <nav className="flex-1 space-y-1 px-3">
